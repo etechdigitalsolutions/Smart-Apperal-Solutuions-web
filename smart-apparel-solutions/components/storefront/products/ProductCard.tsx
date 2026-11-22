@@ -15,6 +15,7 @@ import { formatKokoInstallment } from "@/lib/utils/koko";
 import type { Product } from "@/types";
 
 export default function ProductCard({ product }: { product: Product }) {
+  const mediaImage = product.images[0] || "/images/logo/smart-apperal-logo.png";
   const isUnavailable =
    product.stockStatus === "out_of_stock" ||
    product.stockStatus === "pre_order";
@@ -41,7 +42,7 @@ export default function ProductCard({ product }: { product: Product }) {
       <div className="product-media">
         <Link href={`/products/${product.slug}`} aria-label={product.name}>
           <Image
-            src={product.images[0]}
+            src={mediaImage}
             alt={product.name}
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"

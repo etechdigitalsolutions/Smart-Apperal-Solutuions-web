@@ -1,18 +1,35 @@
-import { notFound } from "next/navigation";
+"use client";
+
+import { notFound, useParams } from "next/navigation";
 import Link from "next/link";
 import ProductCard from "@/components/storefront/products/ProductCard";
 import { categories } from "@/data/categories";
-import { products } from "@/data/products";
 import Image from "next/image";
+import { useEffect, useState } from "react";
+import { fetchCategories, fetchProducts } from "@/lib/api/catalog";
+import type { Category, Product } from "@/types";
 
-interface Props { params: Promise<{ slug: string }>; }
-export function generateStaticParams() { return categories.map((category) => ({ slug: category.slug })); }
+export default function CategoryPage() {
+  const params = useParams<{ slug: string }>();
+  const slug = params.slug;
+  const [category, setCategory] = useState<Category | null>(() => categories.find((item) => item.slug === slug) ?? null);
+  const [categoryProducts, setCategoryProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-export default async function CategoryPage({ params }: Props) {
-  const { slug } = await params;
-  const category = categories.find((item) => item.slug === slug);
-  if (!category) notFound();
-  const categoryProducts = products.filter((product) => product.category.toLowerCase().replaceAll(" ", "-") === slug || slug === "sewing-machines" && product.category === "Sewing Machines" || product.tags.includes(slug));
+  useEffect(() => {
+    let active = true;
+    Promise.all([fetchCategories(), fetchProducts(`?category=${encodeURIComponent(slug)}`)]).then(([liveCategories, liveProducts]) => {
+      if (!active) return;
+      const found = liveCategories.find((item) => item.slug === slug) ?? categories.find((item) => item.slug === slug) ?? null;
+      setCategory(found);
+      setCategoryProducts(liveProducts);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [slug]);
+
+  if (!isLoading && !category) notFound();
+  if (!category) return <main className="page-shell"><div className="container"><div className="empty-state"><p>Loading category...</p></div></div></main>;
   const fallbackImage = categoryProducts[0]?.images[0] ?? "/images/products/jack_f5.jpg";
   const bannerImage = category.image ?? fallbackImage;
   return (

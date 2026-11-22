@@ -71,31 +71,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: LoginCredentials, rememberMe = true) => {
     setIsLoading(true);
-    await new Promise((resolve) => window.setTimeout(resolve, 450));
-    if (
-      credentials.email.trim().toLowerCase() !== "demo@smartapparel.com" ||
-      credentials.password !== DEMO_PASSWORD
-    ) {
-      setIsLoading(false);
-      throw new Error(
-        "Those credentials did not match. Use demo@smartapparel.com and SmartApparel123!."
-      );
-    }
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "login",
+          email: credentials.email.trim(),
+          password: credentials.password,
+        }),
+      });
+      const result = await response.json().catch(() => null) as
+        | { success?: boolean; data?: unknown; message?: string }
+        | null;
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.message || "Those credentials did not match.");
+      }
 
-    const nextUser: User = {
-      id: "demo-customer",
-      name: "Nimal Perera",
-      email: credentials.email.trim().toLowerCase(),
-      role: "customer",
-      createdAt: "2026-01-15",
-    };
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem(AUTH_KEY, JSON.stringify(nextUser));
-    if (rememberMe) sessionStorage.removeItem(AUTH_KEY);
-    authSnapshot = nextUser;
-    notifyAuthChange();
-    setIsLoading(false);
-    return nextUser;
+      const raw = Array.isArray(result.data) ? result.data[0] : result.data;
+      const authenticated = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      const nextUser: User = {
+        id: String(authenticated.user_id ?? authenticated.id ?? "smartstock-user"),
+        name: String(authenticated.full_name ?? authenticated.username ?? credentials.email.split("@")[0]),
+        email: String(authenticated.email ?? credentials.email.trim().toLowerCase()),
+        role: authenticated.role_name === "admin" ? "admin" : "customer",
+        createdAt: String(authenticated.created_at ?? new Date().toISOString()),
+      };
+      const storage = rememberMe ? localStorage : sessionStorage;
+      storage.setItem(AUTH_KEY, JSON.stringify(nextUser));
+      if (rememberMe) sessionStorage.removeItem(AUTH_KEY);
+      authSnapshot = nextUser;
+      notifyAuthChange();
+      return nextUser;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const logout = () => {

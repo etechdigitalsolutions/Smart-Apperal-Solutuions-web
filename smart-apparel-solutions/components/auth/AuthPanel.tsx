@@ -192,13 +192,31 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
     }
 
     if (mode !== "login") {
-      // TODO: wire these to your real API (register / forgot-password / reset-password).
       setPending(true);
       try {
-        await new Promise((resolve) => setTimeout(resolve, 700));
+        if (mode === "register") {
+          const response = await fetch("/api/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "register",
+              name: name.trim(),
+              email: email.trim(),
+              username: email.trim(),
+              password,
+              roleId: 2,
+            }),
+          });
+          const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+          if (!response.ok || !result?.success) throw new Error(result?.message || "Registration failed.");
+        } else if (mode === "forgot") {
+          throw new Error("Password reset by email requires an email-reset RPC or Supabase Auth reset flow.");
+        } else if (mode === "reset") {
+          throw new Error("Enter your account reset link before resetting the password.");
+        }
         setSubmitted(true);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : "Something went wrong. Please try again.");
       } finally {
         setPending(false);
       }

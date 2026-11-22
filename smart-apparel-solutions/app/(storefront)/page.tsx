@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import HeroSlideshow from "@/components/storefront/home/HeroSlideshow";
 import WhatDoYouSew from "@/components/storefront/home/WhatDoYouSew";
@@ -13,6 +16,8 @@ PackageSearch,
   PackageCheck,
   ArrowUpRight,
 } from "lucide-react";
+import { fetchCategories, fetchProducts } from "@/lib/api/catalog";
+import type { Category, Product } from "@/types";
 
 const applications = [
   {
@@ -64,7 +69,22 @@ const brandLogos = [
 ];
 
 export default function HomePage() {
-  const collections = categories.filter((category) => categoryImages[category.slug]).slice(0, 5);
+  const [liveProducts, setLiveProducts] = useState<Product[]>([]);
+  const [liveCategories, setLiveCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([fetchProducts(), fetchCategories()]).then(([nextProducts, nextCategories]) => {
+      if (!active) return;
+      setLiveProducts(nextProducts);
+      setLiveCategories(nextCategories);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const sourceProducts = liveProducts.length ? liveProducts : products;
+  const sourceCategories = liveCategories.length ? liveCategories : categories;
+  const collections = sourceCategories.slice(0, 5);
 
   return (
     <>
@@ -82,9 +102,9 @@ export default function HomePage() {
           </div>
           <HeroSlideshow
             slides={[
-              { image: products[0].images[0], alt: `${products[0].name} industrial sewing equipment`, eyebrow: "Built for", title: "productive workshops." },
-              { image: products[2].images[0], alt: `${products[2].name} cutting equipment`, eyebrow: "Precision for", title: "every production line." },
-              { image: products[4].images[0], alt: `${products[4].name} finishing equipment`, eyebrow: "Finish with", title: "confidence." },
+              { image: sourceProducts[0]?.images[0] || products[0].images[0], alt: `${sourceProducts[0]?.name || "Industrial"} product`, eyebrow: "Featured", title: sourceProducts[0]?.name || "productive workshops." },
+              { image: sourceProducts[1]?.images[0] || products[2].images[0], alt: `${sourceProducts[1]?.name || "Product"}`, eyebrow: "Available now", title: sourceProducts[1]?.name || "every production line." },
+              { image: sourceProducts[2]?.images[0] || products[4].images[0], alt: `${sourceProducts[2]?.name || "Product"}`, eyebrow: "Workshop ready", title: sourceProducts[2]?.name || "confidence." },
             ]}
           />
         </div>
@@ -254,7 +274,11 @@ export default function HomePage() {
         <div className="container">
           <div className="section-intro"><div><p className="eyebrow">The right tools, together</p><h2>Build your line</h2></div><p>From first stitch to final press, explore the equipment families that make a complete workshop.</p></div>
           <div className="collection-grid">
-            {collections.map((category) => <Link href={`/products?category=${category.slug}`} key={category.slug} className="collection-card"><Image src={categoryImages[category.slug]} alt="" fill sizes="(max-width: 640px) 100vw, 20vw" /><span className="collection-overlay" /><div><p>{category.description}</p><h3>{category.name}</h3><span className="text-link">View collection ↗</span></div></Link>)}
+            {collections.map((category) => {
+              const matchingProduct = sourceProducts.find((product) => product.category === category.name);
+              const image = category.image || categoryImages[category.slug] || matchingProduct?.images[0] || products[0].images[0];
+              return <Link href={`/categories/${category.slug}`} key={category.slug} className="collection-card"><Image src={image} alt={category.name} fill sizes="(max-width: 640px) 100vw, 20vw" /><span className="collection-overlay" /><div><p>{category.description}</p><h3>{category.name}</h3><span className="text-link">View collection ↗</span></div></Link>;
+            })}
           </div>
         </div>
       </section>

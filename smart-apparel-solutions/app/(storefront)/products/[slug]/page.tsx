@@ -1,21 +1,33 @@
-import { notFound } from "next/navigation";
+"use client";
 
+import { notFound, useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import ProductDetailPanel from "@/components/storefront/products/ProductDetailPanel";
-import { products } from "@/data/products";
+import { fetchProductBySlug } from "@/lib/api/catalog";
+import { products as staticProducts } from "@/data/products";
+import type { Product } from "@/types";
 
-interface Props {
-  params: Promise<{ slug: string }>;
-}
+export default function ProductDetailPage() {
+  const params = useParams<{ slug: string }>();
+  const slug = params.slug;
+  const [product, setProduct] = useState<Product | null>(
+    () => staticProducts.find((item) => item.slug === slug) ?? null,
+  );
+  const [isLoading, setIsLoading] = useState(true);
 
-export function generateStaticParams() {
-  return products.map((product) => ({ slug: product.slug }));
-}
+  useEffect(() => {
+    let active = true;
+    fetchProductBySlug(slug).then((liveProduct) => {
+      if (!active) return;
+      setProduct(liveProduct ?? staticProducts.find((item) => item.slug === slug) ?? null);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [slug]);
 
-export default async function ProductDetailPage({ params }: Props) {
-  const { slug } = await params;
-  const product = products.find((item) => item.slug === slug);
-
+  if (isLoading && !product) {
+    return <main className="page-shell"><div className="container"><div className="empty-state"><p>Loading live product details...</p></div></div></main>;
+  }
   if (!product) notFound();
-
   return <ProductDetailPanel product={product} />;
 }

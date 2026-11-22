@@ -1,0 +1,128 @@
+SMART APPAREL SOLUTIONS - BACKEND API INTEGRATION REQUIREMENTS
+
+Source collection
+=================
+eTech_SmartStock_Postman_Collection.json
+Supabase project: ngibptwcamqxyncdwwqe
+PostgREST base: https://ngibptwcamqxyncdwwqe.supabase.co/rest/v1
+
+Required server configuration
+=============================
+Set SUPABASE_ANON_KEY or SUPABASE_KEY in the server environment.
+Recommended:
+  SUPABASE_URL=https://ngibptwcamqxyncdwwqe.supabase.co/rest/v1
+  SUPABASE_ANON_KEY=<your real Supabase anon/public key>
+
+Do not place SUPABASE_ANON_KEY in NEXT_PUBLIC_* variables.
+Do not place a service-role key in the frontend or in this repository.
+
+The collection currently contains placeholder "YOUR_SUPABASE_ANON_KEY".
+The live key was not supplied, so live API calls return HTTP 503 until it is configured.
+
+Frontend routes now bound
+========================
+- GET /api/products loads items from Supabase table "items".
+- POST /api/products creates a record in Supabase table "items".
+- GET /api/categories loads Supabase table "categories".
+- GET /api/search searches Supabase table "items".
+- POST /api/auth authenticates through rpc/authenticate_user.
+- POST /api/auth with action=register uses rpc/register_user.
+- POST /api/orders verifies item quantities and current retail prices server-side,
+  creates an invoice in "invoices", and creates rows in "invoice_items".
+- /api/smartstock/[...path] provides an allowlisted server proxy for related
+  PostgREST tables and RPC endpoints.
+
+Backend/database changes still required
+========================================
+1. Supply the real Supabase anon key and verify RLS policies permit the
+   required GET and RPC operations.
+
+2. The collection uses a custom username/password RPC authentication model.
+   If production security requires refreshable sessions or password reset
+   tokens, Supabase Auth should be integrated. The existing frontend auth
+   currently stores a local customer session after a successful RPC response.
+
+3. Confirm the actual users table and authenticate_user return shape.
+   The frontend normalizes common fields such as user_id, id, full_name,
+   username, email, role_name, and created_at.
+
+4. Confirm items columns and required constraints:
+   item_id, name/item_name, description, item_code/barcode, category_id,
+   brand_id, sub_brand_id, current_stock/actual_stock, retail_price,
+   selling_price, image_url, status, created_at.
+
+5. Confirm batches table columns and status values:
+   batch_id, item_id, retail_price, purchase_price, wholesale_price,
+   current_qty, received_date, status.
+   Frontend live product prices currently fall back to item row fields when
+   no retail price exists on items.
+
+6. Checkout requires a valid customer_id if "invoices" enforces it.
+   The invoice creation currently omits customer_id for guest checkout.
+   Map authenticated users to the customers table or make customer_id nullable.
+
+7. Confirm whether invoices.sale_type_id, due_date, user_id, and batch_id
+   are required. The server currently creates invoice_items without batch_id.
+   For stock deduction and correct FIFO operations, the backend should accept
+   the verified server-calculated invoice and decrement batches atomically.
+
+8. A transaction or RPC is required for safe invoice creation. The current
+   implementation creates an invoice and then invoice_items separately, but
+   it cannot roll back the invoice if a later invoice-item insert fails.
+   Add an RPC such as create_website_invoice(p_customer_id, p_items, p_notes)
+   that returns invoice id/reference and performs price validation, stock
+   validation, stock deduction, invoice creation, and invoice-items creation
+   in one database transaction.
+
+9. Implement or confirm secure stock reservation for cart checkout. Cart
+   quantities are currently browser state and are validated only at submission.
+
+10. The collection does not contain frontend-specific tables for:
+    - service and repair inquiries
+    - quotation requests
+    - quotation items
+    - profile images
+    - advertisement placements
+    - discount rules
+    - installment plans
+    - inquiry image storage
+    - web-language content
+    - wishlist persistence
+    - saved addresses
+
+    These features require dedicated Supabase tables/storage buckets and RLS
+    policies, or an equivalent backend API before they should be considered
+    fully connected to the live database.
+
+11. Storage buckets are required for:
+    - inquiry-images
+    - profile-images
+    - advertisement-images
+    - category-banners
+
+    Storage upload policies must prevent anonymous uploads outside the
+    configured size/type limits and must prevent users from reading or
+    modifying another user's private files.
+
+12. Add backend/admin endpoints or PostgREST policies for:
+    - inquiry status updates
+    - quotation status updates and pricing
+    - advertisement activation/scheduling
+    - configurable product discounts
+    - configurable installment eligibility
+    - account profile updates
+
+13. Add RLS policies so:
+    - customer users can read only their own orders, inquiries, quotations,
+      addresses, wishlist, and profile data.
+    - guest checkout/inquiry submissions can be created but not listed.
+    - only authorized admin roles can manage products, categories, stock,
+      orders, advertisements, quotations, and inquiries.
+
+14. Checkout promo codes are only browser-calculated today. The backend
+    discount/price RPC must be authoritative. Do not send final totals
+    from the browser as proof of payment.
+
+15. Update the API key if the collection's "YOUR_SUPABASE_ANON_KEY" is
+    regenerated or rotated. Restart the Next.js server after environment
+    changes.

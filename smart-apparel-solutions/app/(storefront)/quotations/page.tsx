@@ -1,22 +1,32 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { products } from "@/data/products";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency } from "@/lib/utils/helpers";
 import { createReference, saveQuotation } from "@/lib/utils/inquiries";
+import { fetchProducts } from "@/lib/api/catalog";
+import type { Product } from "@/types";
 
 export default function QuotationPage() {
   const { user } = useAuth();
   const [selected, setSelected] = useState<Record<string, number>>({});
   const [reference, setReference] = useState("");
+  const [liveProducts, setLiveProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchProducts().then((items) => { if (active) setLiveProducts(items); });
+    return () => { active = false; };
+  }, []);
+  const sourceProducts = liveProducts.length ? liveProducts : products;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    const items = products
+    const items = sourceProducts
       .filter((product) => (selected[product.id] ?? 0) > 0)
       .map((product) => ({
         productId: product.id,
@@ -59,7 +69,7 @@ export default function QuotationPage() {
             <label className="form-span-two">Additional notes<textarea name="notes" rows={4} /></label>
           </div>
           <div className="quotation-products">
-            {products.slice(0, 8).map((product) => (
+            {sourceProducts.slice(0, 8).map((product) => (
               <label key={product.id} className="quotation-product">
                 <span><strong>{product.name}</strong><small>{formatCurrency(product.price)}</small></span>
                 <input

@@ -7,6 +7,8 @@ import { brands } from "@/data/brands";
 import { categories } from "@/data/categories";
 import { products } from "@/data/products";
 import Link from "next/link";
+import { fetchCategories, fetchProducts } from "@/lib/api/catalog";
+import type { Category, Product } from "@/types";
 
 const menuTagAliases: Record<string, string[]> = {
   "budget-machine-series": ["budget", "budget-series"],
@@ -42,6 +44,22 @@ function ProductsCatalogue() {
   const [condition, setCondition] = useState("all");
 
   const [tag, setTag] = useState(initialTag);
+  const [apiProducts, setApiProducts] = useState<Product[]>([]);
+  const [apiCategories, setApiCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([fetchProducts(), fetchCategories()]).then(([nextProducts, nextCategories]) => {
+      if (!active) return;
+      setApiProducts(nextProducts);
+      setApiCategories(nextCategories);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const sourceCategories: Category[] = apiCategories.length ? apiCategories : categories;
 
   useEffect(() => {
     setQuery(searchParams.get("q") ?? "");
@@ -52,7 +70,9 @@ function ProductsCatalogue() {
 
 
 const filteredProducts = useMemo(() => {
-  const result = products.filter((product) => {
+  const sourceProducts = apiProducts.length ? apiProducts : products;
+  const sourceCategories = apiCategories.length ? apiCategories : categories;
+  const result = sourceProducts.filter((product) => {
     const haystack =
       `${product.name} ${product.brand} ${product.modelCode} ${product.tags.join(" ")}`.toLowerCase();
 
@@ -61,10 +81,12 @@ const filteredProducts = useMemo(() => {
 
     // Match parent categories and their product categories.
     const allowedCategories = categoryAliases[category] ?? [category];
+    const normalizedProductCategory = product.category.toLowerCase().replaceAll(" ", "-");
 
     const matchesCategory =
       !category ||
-      allowedCategories.includes(product.category.toLowerCase());
+      allowedCategories.includes(product.category.toLowerCase()) ||
+      allowedCategories.includes(normalizedProductCategory);
 
     // Match menu subcategories using their corresponding product tags.
     const allowedTags = menuTagAliases[initialTag] ?? [initialTag];
@@ -111,6 +133,7 @@ const filteredProducts = useMemo(() => {
   initialTag,
   query,
   sort,
+  apiProducts,
 ]);
 
 
@@ -130,7 +153,7 @@ const filteredProducts = useMemo(() => {
           <aside className="filter-panel">
             <div className="filter-heading"><strong>Filter catalogue</strong><button type="button" onClick={() => { setQuery(""); setCategory(""); setBrand(""); setAvailability("all"); }}>Reset</button></div>
             <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model, brand or use" /></label>
-            <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
+            <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{sourceCategories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
             <label>Brand<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="">All brands</option>{brands.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
             <label>Condition<select value={condition} onChange={(event) => setCondition(event.target.value)}><option value="all">All conditions</option><option value="brand_new">Brand New</option><option value="used">Used</option></select></label>
             <label>Availability<select value={availability} onChange={(event) => setAvailability(event.target.value)}><option value="all">All stock states</option><option value="in_stock">In stock</option><option value="pre_order">Pre-order</option><option value="out_of_stock">Out of stock</option></select></label>
@@ -138,7 +161,7 @@ const filteredProducts = useMemo(() => {
           </aside>
           <section className="catalog-results">
             <div className="catalog-toolbar"><p><strong>{filteredProducts.length}</strong> products</p><label className="sort-control">Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="featured">Featured</option><option value="newest">Newest</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label></div>
-            {filteredProducts.length ? <div className="product-grid">{filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="empty-state"><h2>No matching products</h2><p>Try a different model, category or stock filter.</p></div>}
+            {isLoading ? <div className="empty-state"><p>Loading live products...</p></div> : filteredProducts.length ? <div className="product-grid">{filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="empty-state"><h2>No matching products</h2><p>Try a different model, category or stock filter.</p></div>}
           </section>
         </div>
       </div>

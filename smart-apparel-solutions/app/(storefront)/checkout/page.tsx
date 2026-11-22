@@ -18,6 +18,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items } = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const shellRef = useRef<HTMLElement>(null);
   const hasItems = items.length > 0;
 
@@ -90,23 +91,45 @@ function handleRemovePromo() {
 
 
 
-function handleCheckout(data: CheckoutFormData) {
+async function handleCheckout(data: CheckoutFormData) {
   if (items.length === 0 || isSubmitting) return;
 
   setIsSubmitting(true);
 
   try {
-    const reference = createOrderReference();
-
     // Calculate the original cart subtotal.
     const subtotal = items.reduce(
       (sum, item) => sum + item.product.price * item.quantity,
       0
     );
-
-    // Calculate the final discount and total.
     const finalDiscount = Math.min(discount, subtotal);
-    const total = Math.max(0, subtotal - finalDiscount);
+    const apiResponse = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        website: "",
+        email: data.email,
+        phone: data.phone,
+        delivery: data.delivery,
+        promoCode: appliedPromoCode,
+        discount: finalDiscount,
+        items: items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        })),
+        notes: data.notes,
+      }),
+    });
+    const apiResult = await apiResponse.json().catch(() => null) as
+      | { success?: boolean; reference?: string; total?: number; message?: string }
+      | null;
+
+    if (!apiResponse.ok || !apiResult?.success) {
+      throw new Error(apiResult?.message || "Unable to create your order.");
+    }
+
+    const reference = apiResult.reference || createOrderReference();
+    const total = Number(apiResult.total ?? Math.max(0, subtotal - finalDiscount));
 
     // Create the order with promo code information.
     const order: TrackingOrder = {
@@ -132,7 +155,8 @@ function handleCheckout(data: CheckoutFormData) {
     sessionStorage.setItem("orderReference", reference);
 
     router.push("/checkout/confirmation");
-  } catch {
+  } catch (error) {
+    setCheckoutError(error instanceof Error ? error.message : "Unable to submit your checkout.");
     setIsSubmitting(false);
   }
 }
@@ -174,6 +198,12 @@ function handleCheckout(data: CheckoutFormData) {
               and delivery before you commit.
             </p>
           </header>
+
+          {checkoutError ? (
+            <div className="form-feedback form-error" role="alert">
+              {checkoutError}
+            </div>
+          ) : null}
 
           <CheckoutForm
             onSubmit={handleCheckout}

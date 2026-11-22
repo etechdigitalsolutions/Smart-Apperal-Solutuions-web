@@ -14,7 +14,7 @@ import { formatKokoInstallment } from "@/lib/utils/koko";
 import type { Product } from "@/types";
 
 export default function ProductDetailPanel({ product }: { product: Product }) {
-  const [activeImage, setActiveImage] = useState(product.images[0]);
+  const [activeImage, setActiveImage] = useState(product.images[0] || "/images/logo/smart-apperal-logo.png");
   const [quantity, setQuantity] = useState(1);
   const { addItem } = useCart();
   const { user } = useAuth();

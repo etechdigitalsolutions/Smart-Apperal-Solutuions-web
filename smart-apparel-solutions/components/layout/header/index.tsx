@@ -16,6 +16,8 @@ import { useWishlist } from "@/hooks/useWishlist";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency } from "@/lib/utils/helpers";
 import { useLanguage } from "@/context/LanguageContext";
+import type { Product } from "@/types";
+import { fetchProducts } from "@/lib/api/catalog";
 
 export default function Header() {
   const { itemCount, subtotal } = useCart();
@@ -30,6 +32,7 @@ export default function Header() {
   const [allCategoriesOpen, setAllCategoriesOpen] = useState(false);
   const [mobileCategoryOpen, setMobileCategoryOpen] = useState<string | null>(null);
   const [isHidden, setIsHidden] = useState(false);
+  const [liveProducts, setLiveProducts] = useState<Product[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
@@ -55,10 +58,11 @@ export default function Header() {
   const suggestions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return [];
-    return products
+    const source = liveProducts.length ? liveProducts : products;
+    return source
       .filter((product) => `${product.name} ${product.brand} ${product.modelCode}`.toLowerCase().includes(normalizedQuery))
       .slice(0, 4);
-  }, [query]);
+  }, [liveProducts, query]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -87,6 +91,14 @@ export default function Header() {
       document.body.style.overflow = "";
     };
   }, [mobileOpen]);
+
+  useEffect(() => {
+    let active = true;
+    fetchProducts().then((items) => {
+      if (active) setLiveProducts(items);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let lastScrollY = window.scrollY;
