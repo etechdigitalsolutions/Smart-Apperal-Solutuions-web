@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# local environment and Netlify generated files
+.env
+.env.local
+.env.*.local
+.netlify/
+!.env.example
 
 # vercel
 .vercel

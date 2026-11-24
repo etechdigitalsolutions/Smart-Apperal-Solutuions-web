@@ -3,21 +3,26 @@ SMART APPAREL SOLUTIONS - BACKEND API INTEGRATION REQUIREMENTS
 Source collection
 =================
 eTech_SmartStock_Postman_Collection.json
-Supabase project: ngibptwcamqxyncdwwqe
-PostgREST base: https://ngibptwcamqxyncdwwqe.supabase.co/rest/v1
+Supabase project: configured through environment variables
+PostgREST base: <SUPABASE_URL>/rest/v1
 
 Required server configuration
 =============================
-Set SUPABASE_ANON_KEY or SUPABASE_KEY in the server environment.
-Recommended:
-  SUPABASE_URL=https://ngibptwcamqxyncdwwqe.supabase.co/rest/v1
-  SUPABASE_ANON_KEY=<your real Supabase anon/public key>
+Set SUPABASE_ANON_KEY (or the legacy SUPABASE_KEY alias) in the server environment.
+Recommended server configuration:
+  SUPABASE_URL=https://<your-project-ref>.supabase.co
+  SUPABASE_ANON_KEY=<your Supabase anon/publishable key>
 
-Do not place SUPABASE_ANON_KEY in NEXT_PUBLIC_* variables.
-Do not place a service-role key in the frontend or in this repository.
+Browser-safe configuration:
+  NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=<your Supabase anon/publishable key>
 
-The collection currently contains placeholder "YOUR_SUPABASE_ANON_KEY".
-The live key was not supplied, so live API calls return HTTP 503 until it is configured.
+The Supabase anon/publishable key is safe for browser use only within NEXT_PUBLIC_SUPABASE_ANON_KEY.
+Do not place a service-role key, database password, or other privileged credential in NEXT_PUBLIC_* variables.
+Never commit privileged credentials.
+
+The collection uses Postman environment variables for the project URL and anon/publishable key.
+Live API calls return HTTP 503 until both server configuration values are set.
 
 Frontend routes now bound
 ========================
@@ -123,6 +128,6 @@ Backend/database changes still required
     discount/price RPC must be authoritative. Do not send final totals
     from the browser as proof of payment.
 
-15. Update the API key if the collection's "YOUR_SUPABASE_ANON_KEY" is
+15. Update the Postman `supabaseAnonKey` environment variable if it is
     regenerated or rotated. Restart the Next.js server after environment
     changes.
