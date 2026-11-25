@@ -7,12 +7,22 @@
     "variable":  [
                      {
                          "key":  "baseUrl",
-                         "value":  "https://ngibptwcamqxyncdwwqe.supabase.co/rest/v1",
+                         "value":  "{{supabaseUrl}}/rest/v1",
+                         "type":  "string"
+                     },
+                     {
+                         "key":  "supabaseUrl",
+                         "value":  "https://<your-project-ref>.supabase.co",
+                         "type":  "string"
+                     },
+                     {
+                         "key":  "supabaseAnonKey",
+                         "value":  "<your-supabase-anon-key>",
                          "type":  "string"
                      },
                      {
                          "key":  "supabaseKey",
-                         "value":  "YOUR_SUPABASE_ANON_KEY",
+                         "value":  "{{supabaseAnonKey}}",
                          "type":  "string"
                      }
                  ],

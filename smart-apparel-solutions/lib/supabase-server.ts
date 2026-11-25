@@ -1,14 +1,29 @@
 import "server-only";
 
-export const SMARTSTOCK_REST_URL =
-  process.env.SUPABASE_URL || "https://ngibptwcamqxyncdwwqe.supabase.co/rest/v1";
+function getSupabaseRestUrl(): string {
+  const configuredUrl =
+    process.env.SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    "";
+  const baseUrl = configuredUrl.trim().replace(/\/+$/, "");
+
+  if (!baseUrl) return "";
+  return baseUrl.endsWith("/rest/v1") ? baseUrl : `${baseUrl}/rest/v1`;
+}
+
+export const SMARTSTOCK_REST_URL = getSupabaseRestUrl();
 
 export function getSupabaseKey(): string {
-  return process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || "";
+  return (
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ""
+  );
 }
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(getSupabaseKey());
+  return Boolean(SMARTSTOCK_REST_URL && getSupabaseKey());
 }
 
 export async function supabaseFetch(
