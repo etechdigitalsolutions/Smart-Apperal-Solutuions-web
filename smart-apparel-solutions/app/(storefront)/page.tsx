@@ -18,6 +18,7 @@ PackageSearch,
 } from "lucide-react";
 import { fetchCategories, fetchProducts } from "@/lib/api/catalog";
 import type { Category, Product } from "@/types";
+import PromotionalBanner from "@/components/storefront/home/PromotionalBanner";
 
 const applications = [
   {
@@ -88,6 +89,7 @@ export default function HomePage() {
 
   return (
     <>
+    <PromotionalBanner />
       <section className="home-hero">
         <div className="container home-hero-grid">
           <div className="home-hero-copy">

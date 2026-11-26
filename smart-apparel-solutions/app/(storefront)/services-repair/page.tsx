@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Headset,
 } from "lucide-react";
+import Image from "next/image";
 
 const services = [
   {
@@ -188,6 +189,51 @@ export default function ServicesRepairPage() {
             })}
           </div>
         </section>
+        <section className="services-updates">
+  <div className="services-section-heading">
+    <div>
+      <p className="eyebrow">SMART APPAREL SOLUTIONS</p>
+      <h2>Latest Updates</h2>
+      <p>Explore our service hotline and experience center.</p>
+    </div>
+  </div>
+
+  <div className="services-updates-grid">
+    <article className="services-update-card">
+      <Image
+        src="/images/service-hotline.jpeg"
+        alt="Smart Apparel Solutions service hotline and contact information"
+        width={1536}
+        height={1024}
+        className="services-update-image"
+      />
+      <div className="services-update-content">
+        <h3>Service Hotline</h3>
+        <p>Need assistance? Contact our team through the service hotline.</p>
+        <Link href="/contact" className="services-card-link">
+          Contact Support <ArrowRight size={16} />
+        </Link>
+      </div>
+    </article>
+
+    <article className="services-update-card">
+      <Image
+        src="/images/experience-center.jpeg"
+        alt="Smart Apparel Solutions Experience Center"
+        width={1536}
+        height={1536}
+        className="services-update-image"
+      />
+      <div className="services-update-content">
+        <h3>Experience Center</h3>
+        <p>Discover our machines, parts and apparel solutions.</p>
+        <Link href="/contact" className="services-card-link">
+          Get in Touch <ArrowRight size={16} />
+        </Link>
+      </div>
+    </article>
+  </div>
+</section>
 
         <section className="services-inquiry-section">
           <div className="services-section-heading">
