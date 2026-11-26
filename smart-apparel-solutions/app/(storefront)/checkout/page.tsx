@@ -10,9 +10,7 @@ import CheckoutForm, {
 import CheckoutSummary from "@/components/storefront/checkout/CheckoutSummary";
 import { useCart } from "@/hooks/useCart";
 
-import { saveOrder, createOrderReference } from "@/data/orders";
-import { validatePromoCode } from "@/data/promoCodes";
-import type { TrackingOrder } from "@/types";
+import { orderService } from "@/services/orderService";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -21,15 +19,6 @@ export default function CheckoutPage() {
   const [checkoutError, setCheckoutError] = useState("");
   const shellRef = useRef<HTMLElement>(null);
   const hasItems = items.length > 0;
-
-
-  const [promoInput, setPromoInput] = useState("");
-  const [appliedPromoCode, setAppliedPromoCode] = useState("");
-  const [discount, setDiscount] = useState(0);
-  const [promoMessage, setPromoMessage] = useState("");
-  const [promoMessageType, setPromoMessageType] = useState<
-    "success" | "error" | ""
-  >("");
 
 
   // Keeps the fixed summary just below the header: it starts under the
@@ -60,99 +49,32 @@ export default function CheckoutPage() {
   }, [hasItems]);
 
 
-function handleApplyPromo() {
-  const subtotal = items.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
-    0
-  );
-
-  const result = validatePromoCode(promoInput, subtotal);
-
-  setPromoMessage(result.message);
-
-  if (!result.valid) {
-    setPromoMessageType("error");
-    return;
-  }
-
-  setAppliedPromoCode(result.code);
-  setDiscount(result.discount);
-  setPromoInput(result.code);
-  setPromoMessageType("success");
-}
-
-function handleRemovePromo() {
-  setPromoInput("");
-  setAppliedPromoCode("");
-  setDiscount(0);
-  setPromoMessage("");
-  setPromoMessageType("");
-}
-
-
-
 async function handleCheckout(data: CheckoutFormData) {
   if (items.length === 0 || isSubmitting) return;
 
   setIsSubmitting(true);
 
   try {
-    // Calculate the original cart subtotal.
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.product.price * item.quantity,
-      0
-    );
-    const finalDiscount = Math.min(discount, subtotal);
-    const apiResponse = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        website: "",
-        email: data.email,
-        phone: data.phone,
-        delivery: data.delivery,
-        promoCode: appliedPromoCode,
-        discount: finalDiscount,
-        items: items.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-        })),
-        notes: data.notes,
-      }),
+    const apiResult = await orderService.create({
+      website: "",
+      email: data.email,
+      items: items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+      })),
+      notes: data.notes,
     });
-    const apiResult = await apiResponse.json().catch(() => null) as
-      | { success?: boolean; reference?: string; total?: number; message?: string }
-      | null;
 
-    if (!apiResponse.ok || !apiResult?.success) {
+    if (!apiResult.success) {
       throw new Error(apiResult?.message || "Unable to create your order.");
     }
 
-    const reference = apiResult.reference || createOrderReference();
-    const total = Number(apiResult.total ?? Math.max(0, subtotal - finalDiscount));
-
-    // Create the order with promo code information.
-    const order: TrackingOrder = {
-      reference,
-      customerName: data.fullName,
-      email: data.email,
-      phone: data.phone,
-      items,
-      subtotal,
-      promoCode: appliedPromoCode || undefined,
-      discount: finalDiscount,
-      total,
-      status: "pending",
-      delivery: data.delivery,
-      createdAt: new Date().toISOString(),
-      trackingMessage:
-        "Your order request has been received and is awaiting confirmation from our team.",
-    };
-
-    saveOrder(order);
+    if (!apiResult.reference) {
+      throw new Error("The order service did not return an order reference.");
+    }
 
     sessionStorage.setItem("checkoutDetails", JSON.stringify(data));
-    sessionStorage.setItem("orderReference", reference);
+    sessionStorage.setItem("orderReference", apiResult.reference);
 
     router.push("/checkout/confirmation");
   } catch (error) {
@@ -215,14 +137,6 @@ async function handleCheckout(data: CheckoutFormData) {
       <aside className="checkout-aside">
         <div className="checkout-aside-inner">
           <CheckoutSummary
-            promoInput={promoInput}
-            appliedPromoCode={appliedPromoCode}
-            discount={discount}
-            promoMessage={promoMessage}
-            promoMessageType={promoMessageType}
-            onPromoInputChange={setPromoInput}
-            onApplyPromo={handleApplyPromo}
-            onRemovePromo={handleRemovePromo}
           />
           <p className="co-aside-note">
             Delivery and final pricing will be confirmed by the sales team.

@@ -36,7 +36,7 @@ export default function ProductDetailPanel({ product }: { product: Product }) {
             <p className="eyebrow">{product.brand} · {product.modelCode}</p>
             <h1>{product.name}</h1>
             <p className="detail-description">{product.description}</p>
-            <div className="detail-price"><strong>{formatCurrency(product.price)}</strong>{product.comparePrice ? <span className="strike">{formatCurrency(product.comparePrice)}</span> : null}<button type="button" className={`detail-wishlist ${isWishlisted ? "is-wishlisted" : ""}`} onClick={() => { if (!user) { sessionStorage.setItem("pending-wishlist-product", product.id); router.push("/login?returnTo=%2Faccount"); return; } toggle(product.id); }}><Heart size={19} fill={isWishlisted ? "currentColor" : "none"} /> {isWishlisted ? "Saved" : "Save to wishlist"}</button></div>
+            <div className="detail-price"><strong>{formatCurrency(product.price)}</strong>{product.comparePrice ? <span className="strike">{formatCurrency(product.comparePrice)}</span> : null}<button type="button" className={`detail-wishlist ${isWishlisted ? "is-wishlisted" : ""}`} onClick={() => { if (!user) { sessionStorage.setItem("pending-wishlist-product", product.id); router.push("/login?returnTo=%2Faccount"); return; } toggle(product.id); }}><Heart size={19} fill={isWishlisted ? "currentColor" : "none"} /> {isWishlisted ? "Saved on this device" : "Save on this device"}</button></div>
             
             <div className="product-installment">
               <span>{formatKokoInstallment(product.price)}</span>

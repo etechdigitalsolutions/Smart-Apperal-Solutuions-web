@@ -1,31 +1,31 @@
-// Auth service - handles authentication API calls
 import { apiFetch } from "@/lib/api/client";
-import type { User, ApiResponse } from "@/types";
+import type { ApiResponse } from "@/types";
 
 export const authService = {
   login: (credentials: { email: string; password: string }) =>
-    apiFetch<ApiResponse<{ user: User; token: string }>>("/api/auth/login", {
+    apiFetch<ApiResponse<unknown>>("/auth", {
       method: "POST",
-      body: JSON.stringify(credentials),
+      body: JSON.stringify({ action: "login", ...credentials }),
     }),
 
   register: (data: { name: string; email: string; password: string }) =>
-    apiFetch<ApiResponse<{ user: User; token: string }>>("/api/auth/register", {
+    apiFetch<ApiResponse<unknown>>("/auth", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({ action: "register", ...data }),
     }),
-
-  logout: () => apiFetch<ApiResponse<null>>("/api/auth/logout", { method: "POST" }),
-
-  forgotPassword: (email: string) =>
-    apiFetch<ApiResponse<null>>("/api/auth/forgot-password", {
+  verifyToken: (token: string) =>
+    apiFetch<ApiResponse<unknown>>("/auth", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ action: "verify", token }),
     }),
-
-  resetPassword: (token: string, password: string) =>
-    apiFetch<ApiResponse<null>>("/api/auth/reset-password", {
+  changePassword: (data: { userId: number; oldPassword: string; newPassword: string }) =>
+    apiFetch<ApiResponse<unknown>>("/auth", {
       method: "POST",
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({
+        action: "change-password",
+        userId: data.userId,
+        oldPassword: data.oldPassword,
+        newPassword: data.newPassword,
+      }),
     }),
 };

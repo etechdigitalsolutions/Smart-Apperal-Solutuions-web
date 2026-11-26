@@ -5,30 +5,11 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 
 export default function MahamuPage() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<"success" | "error" | null>(null);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (isSubmitting) return;
-
-    const form = event.currentTarget;
-
-    setIsSubmitting(true);
-    setStatus(null);
-
-    try {
-      // Frontend demonstration only.
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      form.reset();
-      setStatus("success");
-    } catch {
-      setStatus("error");
-    } finally {
-      setIsSubmitting(false);
-    }
+    setStatus("error");
   }
 
   return (
@@ -97,21 +78,14 @@ export default function MahamuPage() {
             <button
               className="btn btn-primary"
               type="submit"
-              disabled={isSubmitting}
             >
-              {isSubmitting ? "Submitting..." : "Submit inquiry"}
+              Submit inquiry
             </button>
-
-            {status === "success" && (
-              <div className="form-feedback form-success" role="status">
-                Your inquiry has been submitted successfully. Thank you
-                for contacting Smart Apparel Solutions!
-              </div>
-            )}
 
             {status === "error" && (
               <div className="form-feedback form-error" role="alert">
-                We couldn&apos;t submit your inquiry. Please try again.
+                Inquiry submission is unavailable because no backend endpoint
+                is implemented. Please contact our team using the contact page.
               </div>
             )}
           </form>

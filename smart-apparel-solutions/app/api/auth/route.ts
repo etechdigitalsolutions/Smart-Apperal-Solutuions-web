@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSupabaseConfigured, supabaseFetch } from "@/lib/supabase-server";
 
+function rpcReportedFailure(data: unknown) {
+  return data === false ||
+    (typeof data === "object" &&
+      data !== null &&
+      !Array.isArray(data) &&
+      "success" in data &&
+      data.success === false);
+}
+
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ success: false, message: "SUPABASE_ANON_KEY is not configured." }, { status: 503 });
@@ -13,19 +22,27 @@ export async function POST(request: NextRequest) {
   const action = typeof body.action === "string" ? body.action : "login";
 
   if (action === "register") {
+    const email = String(body.email ?? "").trim();
+    const name = String(body.name ?? "").trim();
+    const password = String(body.password ?? "");
+    if (!email || !name || password.length < 8) {
+      return NextResponse.json({ success: false, message: "Name, email, and a password of at least 8 characters are required." }, { status: 400 });
+    }
     const payload = {
-      p_email: String(body.email ?? ""),
-      p_full_name: String(body.name ?? ""),
-      p_password: String(body.password ?? ""),
-      p_role_id: Number(body.roleId ?? 2),
-      p_username: String(body.username ?? body.email ?? ""),
+      p_email: email,
+      p_full_name: name,
+      p_password: password,
+      p_role_id: 2,
+      p_username: email,
     };
     const upstream = await supabaseFetch("/rpc/register_user", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     const data = await upstream.json().catch(() => null);
-    if (!upstream.ok) return NextResponse.json({ success: false, message: "Registration failed.", data }, { status: upstream.status });
+    if (!upstream.ok || rpcReportedFailure(data)) {
+      return NextResponse.json({ success: false, message: "Registration failed." }, { status: upstream.ok ? 400 : upstream.status });
+    }
     return NextResponse.json({ success: true, data });
   }
 
@@ -35,33 +52,36 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({ p_token: String(body.token ?? "") }),
     });
     const data = await upstream.json().catch(() => null);
-    return NextResponse.json({ success: upstream.ok, data }, { status: upstream.status });
+    const success = upstream.ok && !rpcReportedFailure(data);
+    return NextResponse.json({ success, data }, { status: success ? upstream.status : upstream.ok ? 400 : upstream.status });
   }
 
   if (action === "reset") {
-    const upstream = await supabaseFetch("/rpc/reset_password", {
-      method: "POST",
-      body: JSON.stringify({
-        p_admin_user_id: Number(body.adminUserId ?? 1),
-        p_new_password: String(body.password ?? ""),
-        p_user_id: Number(body.userId ?? 1),
-      }),
-    });
-    const data = await upstream.json().catch(() => null);
-    return NextResponse.json({ success: upstream.ok, data }, { status: upstream.status });
+    return NextResponse.json({ success: false, message: "A verified password-reset flow is not available." }, { status: 501 });
   }
 
   if (action === "change-password") {
+    const userId = Number(body.userId);
+    const oldPassword = String(body.oldPassword ?? "");
+    const newPassword = String(body.newPassword ?? "");
+    if (!Number.isSafeInteger(userId) || userId < 1 || !oldPassword || newPassword.length < 8) {
+      return NextResponse.json({ success: false, message: "A valid user ID, current password, and new password of at least 8 characters are required." }, { status: 400 });
+    }
     const upstream = await supabaseFetch("/rpc/change_password", {
       method: "POST",
       body: JSON.stringify({
-        p_new_password: String(body.newPassword ?? ""),
-        p_old_password: String(body.oldPassword ?? ""),
-        p_user_id: Number(body.userId ?? 1),
+        p_new_password: newPassword,
+        p_old_password: oldPassword,
+        p_user_id: userId,
       }),
     });
     const data = await upstream.json().catch(() => null);
-    return NextResponse.json({ success: upstream.ok, data }, { status: upstream.status });
+    const success = upstream.ok && !rpcReportedFailure(data);
+    return NextResponse.json({ success, data }, { status: success ? upstream.status : upstream.ok ? 400 : upstream.status });
+  }
+
+  if (action !== "login") {
+    return NextResponse.json({ success: false, message: "Unsupported authentication action." }, { status: 400 });
   }
 
   const payload = {
@@ -73,6 +93,8 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify(payload),
   });
   const data = await upstream.json().catch(() => null);
-  if (!upstream.ok) return NextResponse.json({ success: false, message: "Authentication failed.", data }, { status: upstream.status });
+  if (!upstream.ok || rpcReportedFailure(data)) {
+    return NextResponse.json({ success: false, message: "Authentication failed." }, { status: upstream.ok ? 401 : upstream.status });
+  }
   return NextResponse.json({ success: true, data });
 }

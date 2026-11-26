@@ -1,56 +1,48 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Camera, Check, UserRound } from "lucide-react";
+import { Camera, UserRound } from "lucide-react";
 import AccountPanel from "@/components/account/AccountPanel";
 import { useAuth } from "@/hooks/useAuth";
-import { Toast } from "@/components/ui/toast";
-
-const AVATAR_KEY = "profile-avatar";
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const [name, setName] = useState(user?.name ?? "Nimal Perera");
-  const [phone, setPhone] = useState("+94 71 206 1850");
+  const [name, setName] = useState(user?.name ?? "");
+  const [phone, setPhone] = useState("");
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [initialName, setInitialName] = useState(user?.name ?? "Nimal Perera");
-  const [initialPhone, setInitialPhone] = useState(phone);
+  const [submitError, setSubmitError] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const [initialName, setInitialName] = useState(user?.name ?? "");
 
   useEffect(() => {
-    const storedName = localStorage.getItem("profile-name") || user?.name || "Nimal Perera";
-    const storedPhone = localStorage.getItem("profile-phone") || "+94 71 206 1850";
-    const storedAvatar = localStorage.getItem(AVATAR_KEY);
     const frame = window.requestAnimationFrame(() => {
-      setName(storedName);
-      setPhone(storedPhone);
-      setInitialName(storedName);
-      setInitialPhone(storedPhone);
-      setAvatar(storedAvatar);
+      setName(user?.name ?? "");
+      setInitialName(user?.name ?? "");
     });
     return () => window.cancelAnimationFrame(frame);
   }, [user?.name]);
 
   function save(event: FormEvent) {
     event.preventDefault();
-    localStorage.setItem("profile-name", name);
-    localStorage.setItem("profile-phone", phone);
-    if (avatar) localStorage.setItem(AVATAR_KEY, avatar);
-    setInitialName(name);
-    setInitialPhone(phone);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+    setSubmitError(true);
   }
 
   function cancel() {
     setName(initialName);
-    setPhone(initialPhone);
+    setPhone("");
   }
 
   function onAvatarChange(file: File | null) {
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return;
-    if (file.size > 5 * 1024 * 1024) return;
+    setAvatarError("");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setAvatarError("Choose a JPG, PNG or WEBP image.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("The image must be 5 MB or smaller.");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") setAvatar(reader.result);
@@ -60,10 +52,9 @@ export default function ProfilePage() {
 
   function removeAvatar() {
     setAvatar(null);
-    localStorage.removeItem(AVATAR_KEY);
   }
 
-  const dirty = name !== initialName || phone !== initialPhone;
+  const dirty = name !== initialName || phone !== "";
 
   return (
     <AccountPanel
@@ -90,6 +81,8 @@ export default function ProfilePage() {
                 onChange={(event) => onAvatarChange(event.target.files?.[0] ?? null)}
               />
             </label>
+            <small>Preview only; profile photo upload is unavailable.</small>
+            {avatarError ? <p className="form-error-text" role="alert">{avatarError}</p> : null}
             {avatar ? (
               <button type="button" className="profile-avatar-remove" onClick={removeAvatar}>
                 Remove photo
@@ -98,7 +91,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <h2>Personal information</h2>
-            <p>This information is only used to support your orders.</p>
+            <p>Profile changes cannot be saved because the backend profile API is unavailable.</p>
           </div>
         </div>
 
@@ -109,7 +102,7 @@ export default function ProfilePage() {
               id="profile-name"
               name="name"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => { setName(event.target.value); setSubmitError(false); }}
               autoComplete="name"
               required
             />
@@ -130,7 +123,7 @@ export default function ProfilePage() {
               id="profile-phone"
               name="phone"
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
+              onChange={(event) => { setPhone(event.target.value); setSubmitError(false); }}
               autoComplete="tel"
             />
           </label>
@@ -148,19 +141,9 @@ export default function ProfilePage() {
           >
             Cancel
           </button>
-          {saved ? (
-            <span className="saved-message">
-              <Check size={16} aria-hidden /> Profile updated
-            </span>
-          ) : null}
+          {submitError ? <p className="form-feedback form-error" role="alert">Your profile was not saved. The backend does not provide a profile update or image upload API.</p> : null}
         </div>
       </form>
-
-      {saved ? (
-        <Toast variant="success">
-          <Check size={16} aria-hidden /> Profile saved successfully
-        </Toast>
-      ) : null}
     </AccountPanel>
   );
 }

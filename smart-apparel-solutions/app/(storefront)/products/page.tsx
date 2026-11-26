@@ -3,9 +3,6 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ProductCard from "@/components/storefront/products/ProductCard";
-import { brands } from "@/data/brands";
-import { categories } from "@/data/categories";
-import { products } from "@/data/products";
 import Link from "next/link";
 import { fetchCategories, fetchProducts } from "@/lib/api/catalog";
 import type { Category, Product } from "@/types";
@@ -19,23 +16,17 @@ const menuTagAliases: Record<string, string[]> = {
   "interlock-machines": ["interlock"],
 };
 
-const categoryAliases: Record<string, string[]> = {
-  "sewing-machines": ["sewing machines", "automated machines"],
-  cutting: ["cutting"],
-  "ironing-finishing": ["ironing & finishing"],
-  embroidery: ["embroidery"],
-  "spare-parts": ["spare parts"],
-  needles: ["needles"],
-  accessories: ["accessories"],
-  "home-appliances": ["home appliances"],
-};
-
-function ProductsCatalogue() {
-  const searchParams = useSearchParams();
-  const initialSearch = searchParams.get("q") ?? "";
-  const initialCategory = searchParams.get("category") ?? "";
-  const initialTag = searchParams.get("tag") ?? "";
-  const initialBrand = searchParams.get("brand") ?? "";
+function ProductsCatalogueContent({
+  initialSearch,
+  initialCategory,
+  initialTag,
+  initialBrand,
+}: {
+  initialSearch: string;
+  initialCategory: string;
+  initialTag: string;
+  initialBrand: string;
+}) {
   const [query, setQuery] = useState(initialSearch);
   const [category, setCategory] = useState(initialCategory);
   const [brand, setBrand] = useState(initialBrand);
@@ -43,36 +34,32 @@ function ProductsCatalogue() {
   const [sort, setSort] = useState("featured");
   const [condition, setCondition] = useState("all");
 
-  const [tag, setTag] = useState(initialTag);
+  const tag = initialTag;
   const [apiProducts, setApiProducts] = useState<Product[]>([]);
   const [apiCategories, setApiCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
-    Promise.all([fetchProducts(), fetchCategories()]).then(([nextProducts, nextCategories]) => {
-      if (!active) return;
-      setApiProducts(nextProducts);
-      setApiCategories(nextCategories);
-      setIsLoading(false);
-    });
+    Promise.all([fetchProducts(), fetchCategories()])
+      .then(([nextProducts, nextCategories]) => {
+        if (!active) return;
+        setApiProducts(nextProducts);
+        setApiCategories(nextCategories);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : "Unable to load the catalogue.");
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
     return () => { active = false; };
   }, []);
 
-  const sourceCategories: Category[] = apiCategories.length ? apiCategories : categories;
-
-  useEffect(() => {
-    setQuery(searchParams.get("q") ?? "");
-    setCategory(searchParams.get("category") ?? "");
-    setBrand(searchParams.get("brand") ?? "");
-    setTag(searchParams.get("tag") ?? "");
-  }, [searchParams]);
-
-
 const filteredProducts = useMemo(() => {
-  const sourceProducts = apiProducts.length ? apiProducts : products;
-  const sourceCategories = apiCategories.length ? apiCategories : categories;
-  const result = sourceProducts.filter((product) => {
+  const result = apiProducts.filter((product) => {
     const haystack =
       `${product.name} ${product.brand} ${product.modelCode} ${product.tags.join(" ")}`.toLowerCase();
 
@@ -80,20 +67,12 @@ const filteredProducts = useMemo(() => {
       !query || haystack.includes(query.toLowerCase());
 
     // Match parent categories and their product categories.
-    const allowedCategories = categoryAliases[category] ?? [category];
-    const normalizedProductCategory = product.category.toLowerCase().replaceAll(" ", "-");
-
     const matchesCategory =
       !category ||
-      allowedCategories.includes(product.category.toLowerCase()) ||
-      allowedCategories.includes(normalizedProductCategory);
+      product.category.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") === category;
 
-    // Match menu subcategories using their corresponding product tags.
-    const allowedTags = menuTagAliases[initialTag] ?? [initialTag];
-
-    const matchesTag =
-      !initialTag ||
-      allowedTags.some((tag) => product.tags.includes(tag));
+    const allowedTags = menuTagAliases[tag] ?? [tag];
+    const matchesTag = !tag || allowedTags.some((value) => product.tags.includes(value));
 
     const matchesBrand =
       !brand || product.brand === brand;
@@ -130,12 +109,14 @@ const filteredProducts = useMemo(() => {
   brand,
   category,
   condition,
-  initialTag,
+  tag,
   query,
   sort,
   apiProducts,
 ]);
 
+  const brands = [...new Set(apiProducts.map((product) => product.brand).filter(Boolean))].sort();
+  const categories = apiCategories;
 
   return (
     <main className="page-shell">
@@ -153,19 +134,33 @@ const filteredProducts = useMemo(() => {
           <aside className="filter-panel">
             <div className="filter-heading"><strong>Filter catalogue</strong><button type="button" onClick={() => { setQuery(""); setCategory(""); setBrand(""); setAvailability("all"); }}>Reset</button></div>
             <label>Search<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model, brand or use" /></label>
-            <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{sourceCategories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
-            <label>Brand<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="">All brands</option>{brands.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}</select></label>
+            <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option>{categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></label>
+            <label>Brand<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="">All brands</option>{brands.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             <label>Condition<select value={condition} onChange={(event) => setCondition(event.target.value)}><option value="all">All conditions</option><option value="brand_new">Brand New</option><option value="used">Used</option></select></label>
             <label>Availability<select value={availability} onChange={(event) => setAvailability(event.target.value)}><option value="all">All stock states</option><option value="in_stock">In stock</option><option value="pre_order">Pre-order</option><option value="out_of_stock">Out of stock</option></select></label>
             <div className="filter-note"><strong>Need a recommendation?</strong><p>Send us your fabric, operation and daily output. We will suggest a practical machine setup.</p><a href="/contact" className="link-arrow">Talk to a specialist</a></div>
           </aside>
           <section className="catalog-results">
             <div className="catalog-toolbar"><p><strong>{filteredProducts.length}</strong> products</p><label className="sort-control">Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="featured">Featured</option><option value="newest">Newest</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></label></div>
-            {isLoading ? <div className="empty-state"><p>Loading live products...</p></div> : filteredProducts.length ? <div className="product-grid">{filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="empty-state"><h2>No matching products</h2><p>Try a different model, category or stock filter.</p></div>}
+            {isLoading ? <div className="empty-state"><p>Loading live products...</p></div> : loadError ? <div className="empty-state" role="alert"><h2>Catalogue unavailable</h2><p>{loadError}</p></div> : filteredProducts.length ? <div className="product-grid">{filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="empty-state"><h2>No matching products</h2><p>Try a different model, category or stock filter.</p></div>}
           </section>
         </div>
       </div>
     </main>
+  );
+}
+
+function ProductsCatalogue() {
+  const searchParams = useSearchParams();
+  const queryKey = searchParams.toString();
+  return (
+    <ProductsCatalogueContent
+      key={queryKey}
+      initialSearch={searchParams.get("q") ?? ""}
+      initialCategory={searchParams.get("category") ?? ""}
+      initialTag={searchParams.get("tag") ?? ""}
+      initialBrand={searchParams.get("brand") ?? ""}
+    />
   );
 }
 

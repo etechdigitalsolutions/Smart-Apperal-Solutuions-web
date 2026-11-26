@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  return NextResponse.json({ cart: [] });
+  return NextResponse.json(
+    { success: false, message: "Persistent cart API is not implemented." },
+    { status: 501 },
+  );
 }
 
 export async function POST() {
-  return NextResponse.json({ message: "Item added to cart" });
+  return NextResponse.json(
+    { success: false, message: "Persistent cart API is not implemented." },
+    { status: 501 },
+  );
 }
 
 export async function DELETE() {
-  return NextResponse.json({ message: "Cart cleared" });
+  return NextResponse.json(
+    { success: false, message: "Persistent cart API is not implemented." },
+    { status: 501 },
+  );
 }
