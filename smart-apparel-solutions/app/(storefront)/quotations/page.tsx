@@ -2,55 +2,32 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { products } from "@/data/products";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency } from "@/lib/utils/helpers";
-import { createReference, saveQuotation } from "@/lib/utils/inquiries";
 import { fetchProducts } from "@/lib/api/catalog";
 import type { Product } from "@/types";
 
 export default function QuotationPage() {
   const { user } = useAuth();
   const [selected, setSelected] = useState<Record<string, number>>({});
-  const [reference, setReference] = useState("");
   const [liveProducts, setLiveProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [submissionError, setSubmissionError] = useState(false);
 
   useEffect(() => {
     let active = true;
-    fetchProducts().then((items) => { if (active) setLiveProducts(items); });
+    fetchProducts()
+      .then((items) => { if (active) setLiveProducts(items); })
+      .catch(() => { if (active) setLoadError("Unable to load current products for a quotation."); })
+      .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
   }, []);
-  const sourceProducts = liveProducts.length ? liveProducts : products;
+  const sourceProducts = liveProducts;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const items = sourceProducts
-      .filter((product) => (selected[product.id] ?? 0) > 0)
-      .map((product) => ({
-        productId: product.id,
-        name: product.name,
-        quantity: selected[product.id],
-        price: product.price,
-      }));
-    if (!items.length) return;
-    const nextReference = createReference("QT");
-    saveQuotation({
-      id: crypto.randomUUID(),
-      reference: nextReference,
-      name: String(data.get("name") || user?.name || ""),
-      email: String(data.get("email") || user?.email || ""),
-      phone: String(data.get("phone") || ""),
-      items,
-      notes: String(data.get("notes") || ""),
-      status: "Pending",
-      userId: user?.id,
-      createdAt: new Date().toISOString(),
-    });
-    setReference(nextReference);
-    setSelected({});
-    form.reset();
+    setSubmissionError(true);
   }
 
   return (
@@ -69,6 +46,9 @@ export default function QuotationPage() {
             <label className="form-span-two">Additional notes<textarea name="notes" rows={4} /></label>
           </div>
           <div className="quotation-products">
+            {isLoading ? <p role="status">Loading current products...</p> : null}
+            {loadError ? <p className="form-feedback form-error" role="alert">{loadError}</p> : null}
+            {!isLoading && !loadError && !sourceProducts.length ? <p>No products are currently available.</p> : null}
             {sourceProducts.slice(0, 8).map((product) => (
               <label key={product.id} className="quotation-product">
                 <span><strong>{product.name}</strong><small>{formatCurrency(product.price)}</small></span>
@@ -83,8 +63,8 @@ export default function QuotationPage() {
               </label>
             ))}
           </div>
-          <button type="submit" className="btn btn-primary">Submit quotation request</button>
-          {reference ? <div className="form-feedback form-success" role="status">Quotation submitted. Reference: <strong>{reference}</strong></div> : null}
+          <button type="submit" className="btn btn-primary" disabled={isLoading || Boolean(loadError) || !sourceProducts.length}>Submit quotation request</button>
+          {submissionError ? <div className="form-feedback form-error" role="alert">Quotation submission is unavailable because no quotation backend endpoint is implemented. Your request was not saved.</div> : null}
         </form>
         {user ? <Link href="/account/quotations" className="link-arrow">View my quotation history →</Link> : null}
       </div>

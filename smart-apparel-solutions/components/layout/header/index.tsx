@@ -9,7 +9,6 @@ import { usePathname } from "next/navigation";
 
 import config from "@/config";
 import { navigation } from "@/data/navigation";
-import { products } from "@/data/products";
 import MegaMenu, { AllCategoriesTrigger, MobileMegaMenu } from "./MegaMenu";
 import { useCart } from "@/hooks/useCart";
 import { useWishlist } from "@/hooks/useWishlist";
@@ -33,6 +32,7 @@ export default function Header() {
   const [mobileCategoryOpen, setMobileCategoryOpen] = useState<string | null>(null);
   const [isHidden, setIsHidden] = useState(false);
   const [liveProducts, setLiveProducts] = useState<Product[]>([]);
+  const [catalogError, setCatalogError] = useState("");
   const searchRef = useRef<HTMLDivElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
@@ -58,8 +58,7 @@ export default function Header() {
   const suggestions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return [];
-    const source = liveProducts.length ? liveProducts : products;
-    return source
+    return liveProducts
       .filter((product) => `${product.name} ${product.brand} ${product.modelCode}`.toLowerCase().includes(normalizedQuery))
       .slice(0, 4);
   }, [liveProducts, query]);
@@ -94,9 +93,11 @@ export default function Header() {
 
   useEffect(() => {
     let active = true;
-    fetchProducts().then((items) => {
-      if (active) setLiveProducts(items);
-    });
+    fetchProducts()
+      .then((items) => { if (active) setLiveProducts(items); })
+      .catch((error: unknown) => {
+        if (active) setCatalogError(error instanceof Error ? error.message : "The product catalogue is unavailable.");
+      });
     return () => { active = false; };
   }, []);
 
@@ -170,7 +171,7 @@ export default function Header() {
                           <small>{product.brand} · {product.modelCode}</small>
                         </span>
                       </Link>
-                  )) : <p className="search-empty">No products found. Try a brand or model number.</p>}
+                  )) : <p className="search-empty">{catalogError ? "Product search is unavailable right now." : "No products found. Try a brand or model number."}</p>}
                   <Link href={`/search?q=${encodeURIComponent(query)}`} className="search-view-all" onClick={() => setSearchOpen(false)}>View all results <span>↗</span></Link>
                 </motion.div>
               ) : null}

@@ -2,26 +2,55 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, LockKeyhole, LogOut, Trash2 } from "lucide-react";
+import { Bell, LockKeyhole, LogOut, Trash2 } from "lucide-react";
 import AccountPanel from "@/components/account/AccountPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { Modal } from "@/components/ui/modal";
-import { Toast } from "@/components/ui/toast";
+import { authService } from "@/services/authService";
 
 export default function UserSettingsPage() {
   const router = useRouter();
-  const { logout } = useAuth();
-  const [saved, setSaved] = useState(false);
-  const [emailUpdates, setEmailUpdates] = useState(true);
-  const [whatsapp, setWhatsapp] = useState(true);
+  const { logout, user } = useAuth();
+  const [deleteError, setDeleteError] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  function save(event: FormEvent) {
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    localStorage.setItem("account-settings", JSON.stringify({ emailUpdates, whatsapp }));
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2200);
+    if (isChangingPassword) return;
+    const userId = Number(user?.id);
+    if (!Number.isSafeInteger(userId) || userId < 1) {
+      setPasswordError("A valid account ID is not available for password changes.");
+      return;
+    }
+    if (newPassword.length < 8 || newPassword !== confirmPassword) {
+      setPasswordError(newPassword.length < 8
+        ? "The new password must be at least 8 characters."
+        : "The new passwords do not match.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setPasswordError("");
+    setPasswordChanged(false);
+    try {
+      const result = await authService.changePassword({ userId, oldPassword, newPassword });
+      if (!result.success) throw new Error(result.message || "Unable to update the password.");
+      setPasswordChanged(true);
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Unable to update the password.");
+    } finally {
+      setIsChangingPassword(false);
+    }
   }
 
   function handleLogout() {
@@ -31,13 +60,8 @@ export default function UserSettingsPage() {
   }
 
   function handleDelete() {
-    localStorage.removeItem("account-settings");
-    localStorage.removeItem("profile-name");
-    localStorage.removeItem("profile-phone");
-    localStorage.removeItem("profile-avatar");
-    logout();
+    setDeleteError(true);
     setConfirmDelete(false);
-    router.replace("/login");
   }
 
   return (
@@ -45,7 +69,7 @@ export default function UserSettingsPage() {
       title="Account settings"
       description="Choose how we keep you informed and manage your account security."
     >
-      <form className="settings-stack" onSubmit={save}>
+      <div className="settings-stack">
         <section className="account-card settings-card">
           <div className="settings-heading">
             <span className="stat-icon blue" aria-hidden>
@@ -53,67 +77,31 @@ export default function UserSettingsPage() {
             </span>
             <div>
               <h2>Notification preferences</h2>
-              <p>Stay informed about your orders and new equipment.</p>
+              <p>Notification preferences cannot be loaded or saved because no preference API is implemented.</p>
             </div>
           </div>
-
-          <label className="setting-toggle">
-            <span>
-              <strong>Email updates</strong>
-              <small>Order confirmations and quotation updates</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={emailUpdates}
-              onChange={(event) => setEmailUpdates(event.target.checked)}
-              aria-label="Email updates"
-            />
-          </label>
-
-          <label className="setting-toggle">
-            <span>
-              <strong>WhatsApp updates</strong>
-              <small>Delivery and service notifications</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={whatsapp}
-              onChange={(event) => setWhatsapp(event.target.checked)}
-              aria-label="WhatsApp updates"
-            />
-          </label>
         </section>
 
-        <section className="account-card settings-card">
+        <form className="account-card settings-card" onSubmit={changePassword}>
           <div className="settings-heading">
             <span className="stat-icon green" aria-hidden>
               <LockKeyhole size={19} />
             </span>
             <div>
               <h2>Password & security</h2>
-              <p>Keep your account protected with a strong password.</p>
+              <p>Change your password using your current password.</p>
             </div>
           </div>
-          <button
-            type="button"
-            className="btn btn-outline"
-            onClick={() => router.push("/reset-password")}
-          >
-            Change password
+          <label>Current password<input type="password" autoComplete="current-password" value={oldPassword} onChange={(event) => setOldPassword(event.target.value)} required /></label>
+          <label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={8} required /></label>
+          <label>Confirm new password<input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required /></label>
+          {passwordError ? <p className="form-feedback form-error" role="alert">{passwordError}</p> : null}
+          {passwordChanged ? <p className="form-feedback form-success" role="status">Password updated successfully.</p> : null}
+          <button type="submit" className="btn btn-primary" disabled={isChangingPassword}>
+            {isChangingPassword ? "Updating..." : "Change password"}
           </button>
-        </section>
-
-        <div className="form-actions">
-          <button type="submit" className="btn btn-primary">
-            Save preferences
-          </button>
-          {saved ? (
-            <span className="saved-message">
-              <Check size={16} aria-hidden /> Preferences saved
-            </span>
-          ) : null}
-        </div>
-      </form>
+        </form>
+      </div>
 
       <section className="account-card settings-card danger-zone" aria-labelledby="danger-zone-title">
         <div className="settings-heading">
@@ -122,7 +110,7 @@ export default function UserSettingsPage() {
           </span>
           <div>
             <h2 id="danger-zone-title">Danger zone</h2>
-            <p>Sign out of this device or permanently remove local account data.</p>
+            <p>Sign out of this device or request account deletion from support.</p>
           </div>
         </div>
         <div className="danger-actions">
@@ -134,16 +122,12 @@ export default function UserSettingsPage() {
             className="btn btn-danger-outline"
             onClick={() => setConfirmDelete(true)}
           >
-            <Trash2 size={16} aria-hidden /> Delete account data
+            <Trash2 size={16} aria-hidden /> Request account deletion
           </button>
         </div>
       </section>
 
-      {saved ? (
-        <Toast variant="success">
-          <Check size={16} aria-hidden /> Preferences saved
-        </Toast>
-      ) : null}
+      {deleteError ? <p className="form-feedback form-error" role="alert">Account deletion is unavailable. No account data was deleted. Please contact support.</p> : null}
 
       <Modal
         open={confirmLogout}
@@ -173,14 +157,13 @@ export default function UserSettingsPage() {
               Cancel
             </button>
             <button type="button" className="btn btn-danger" onClick={handleDelete}>
-              Delete and logout
+              Confirm request
             </button>
           </>
         }
       >
         <p>
-          This removes locally stored profile and preference data from this browser, then signs you
-          out. This demo action cannot be undone.
+          The backend does not provide an account-deletion API. No account data will be removed by this action.
         </p>
       </Modal>
     </AccountPanel>

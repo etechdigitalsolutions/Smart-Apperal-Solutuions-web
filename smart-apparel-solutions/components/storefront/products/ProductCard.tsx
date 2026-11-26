@@ -33,8 +33,6 @@ export default function ProductCard({ product }: { product: Product }) {
     ? Math.round((savings / product.comparePrice) * 100)
     : 0;
 
-  const kokoUrl = `https://paykoko.com/customer-education?Amount=${(product.price / 3).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
   const labelBadges = product.badges.filter((b) => !b.includes("%") && b !== "Out of Stock");
 
   return (
@@ -79,7 +77,7 @@ export default function ProductCard({ product }: { product: Product }) {
             return;
           }
           toggle(product.id);
-          setWishlistMessage(isWishlisted ? "Removed from wishlist" : "Saved to wishlist");
+          setWishlistMessage(isWishlisted ? "Removed from this device's wishlist" : "Saved on this device only");
           window.setTimeout(() => setWishlistMessage(""), 2200);
         }}>
           <AnimatePresence mode="wait" initial={false}>

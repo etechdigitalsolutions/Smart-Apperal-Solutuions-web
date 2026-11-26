@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { User } from "@/types";
+import { authService } from "@/services/authService";
 
 type LoginCredentials = { email: string; password: string };
 type AuthContextValue = {
@@ -21,13 +22,24 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const AUTH_KEY = "smart-apparel-auth";
-const DEMO_PASSWORD = "SmartApparel123!";
 const authListeners = new Set<() => void>();
 let authSnapshot: User | null = null;
 let hydrationSnapshot = false;
+const handleStorageChange = (event: StorageEvent) => {
+  if (event.key === AUTH_KEY || event.key === null) {
+    authSnapshot = readStoredUser();
+    hydrationSnapshot = true;
+    notifyAuthChange();
+  }
+};
 const subscribe = (listener: () => void) => {
+  const firstSubscriber = authListeners.size === 0;
   authListeners.add(listener);
-  return () => authListeners.delete(listener);
+  if (firstSubscriber) window.addEventListener("storage", handleStorageChange);
+  return () => {
+    authListeners.delete(listener);
+    if (authListeners.size === 0) window.removeEventListener("storage", handleStorageChange);
+  };
 };
 const notifyAuthChange = () => authListeners.forEach((listener) => listener());
 const getUserSnapshot = () => authSnapshot;
@@ -72,30 +84,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (credentials: LoginCredentials, rememberMe = true) => {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "login",
-          email: credentials.email.trim(),
-          password: credentials.password,
-        }),
+      const result = await authService.login({
+        ...credentials,
+        email: credentials.email.trim(),
       });
-      const result = await response.json().catch(() => null) as
-        | { success?: boolean; data?: unknown; message?: string }
-        | null;
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.message || "Those credentials did not match.");
+      if (!result.success) {
+        throw new Error(result.message || "Those credentials did not match.");
       }
-
-      const raw = Array.isArray(result.data) ? result.data[0] : result.data;
-      const authenticated = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      const responseData = result.data;
+      const raw = Array.isArray(responseData) ? responseData[0] : responseData;
+      const responseRecord =
+        raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      const authenticated =
+        responseRecord.user && typeof responseRecord.user === "object"
+          ? responseRecord.user as Record<string, unknown>
+          : responseRecord;
+      const id = authenticated.user_id ?? authenticated.id;
+      if (typeof id !== "string" && typeof id !== "number") {
+        throw new Error("The authentication response did not include a user ID.");
+      }
       const nextUser: User = {
-        id: String(authenticated.user_id ?? authenticated.id ?? "smartstock-user"),
+        id: String(id),
         name: String(authenticated.full_name ?? authenticated.username ?? credentials.email.split("@")[0]),
         email: String(authenticated.email ?? credentials.email.trim().toLowerCase()),
-        role: authenticated.role_name === "admin" ? "admin" : "customer",
-        createdAt: String(authenticated.created_at ?? new Date().toISOString()),
+        role: String(authenticated.role_name ?? "").toLowerCase() === "admin" ? "admin" : "customer",
+        createdAt: String(authenticated.created_at ?? ""),
       };
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem(AUTH_KEY, JSON.stringify(nextUser));
@@ -127,5 +140,3 @@ export function useAuth() {
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
-
-export { DEMO_PASSWORD };

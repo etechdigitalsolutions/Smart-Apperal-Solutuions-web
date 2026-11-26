@@ -3,15 +3,26 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowUpRight, Heart, Package, Settings, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
 import AccountPanel from "@/components/account/AccountPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { useWishlist } from "@/hooks/useWishlist";
-import { products } from "@/data/products";
+import { fetchProducts } from "@/lib/api/catalog";
 import { formatCurrency } from "@/lib/utils/helpers";
+import type { Product } from "@/types";
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const { wishlist } = useWishlist();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productError, setProductError] = useState("");
+  useEffect(() => {
+    let active = true;
+    fetchProducts()
+      .then((items) => { if (active) setProducts(items); })
+      .catch(() => { if (active) setProductError("Unable to load current product details."); });
+    return () => { active = false; };
+  }, []);
   const savedProducts = products.filter((product) => wishlist.includes(product.id));
   const firstName = user?.name.split(" ")[0] ?? "there";
 
@@ -36,9 +47,9 @@ export default function DashboardPage() {
           <span className="stat-icon blue" aria-hidden>
             <Package size={19} />
           </span>
-          <strong>4</strong>
+          <strong>—</strong>
           <span>Active orders</span>
-          <small>+1 this month</small>
+          <small>Order history is unavailable</small>
         </div>
         <div className="account-stat-card">
           <span className="stat-icon pink" aria-hidden>
@@ -46,15 +57,15 @@ export default function DashboardPage() {
           </span>
           <strong>{wishlist.length}</strong>
           <span>Wishlist items</span>
-          <small>Saved for later</small>
+          <small>Saved on this device only</small>
         </div>
         <div className="account-stat-card">
           <span className="stat-icon green" aria-hidden>
             <UserRound size={19} />
           </span>
-          <strong>92%</strong>
+          <strong>—</strong>
           <span>Profile complete</span>
-          <small>Looking good</small>
+          <small>Profile data is unavailable</small>
         </div>
       </div>
 
@@ -69,27 +80,9 @@ export default function DashboardPage() {
               View all <ArrowUpRight size={15} aria-hidden />
             </Link>
           </div>
-          <div className="activity-list">
-            <div>
-              <span className="activity-mark processing" aria-hidden>
-                <Package size={16} />
-              </span>
-              <div>
-                <strong>SAS-2026-001</strong>
-                <p>Industrial sewing machine · 2 items</p>
-              </div>
-              <span className="status-pill processing">Processing</span>
-            </div>
-            <div>
-              <span className="activity-mark delivered" aria-hidden>
-                <Package size={16} />
-              </span>
-              <div>
-                <strong>SAS-2025-018</strong>
-                <p>Juki knife set · 1 item</p>
-              </div>
-              <span className="status-pill delivered">Delivered</span>
-            </div>
+          <div className="compact-empty" role="status">
+            <Package size={22} aria-hidden />
+            <p>The backend does not provide customer order history or delivery status.</p>
           </div>
         </section>
 
@@ -103,7 +96,7 @@ export default function DashboardPage() {
               View all <ArrowUpRight size={15} aria-hidden />
             </Link>
           </div>
-          {savedProducts.length ? (
+          {productError ? <div className="compact-empty" role="alert"><p>{productError}</p></div> : savedProducts.length ? (
             <div className="mini-product-list">
               {savedProducts.slice(0, 3).map((product) => (
                 <Link href={`/products/${product.slug}`} key={product.id}>

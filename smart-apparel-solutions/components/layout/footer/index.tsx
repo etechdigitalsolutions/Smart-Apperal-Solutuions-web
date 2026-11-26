@@ -4,12 +4,20 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, ArrowUp, Mail, MapPin, Phone, Clock3, Music2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
 
 import config from "@/config";
 import { useLanguage } from "@/context/LanguageContext";
 
 export default function Footer() {
   const { translate } = useLanguage();
+  const [newsletterError, setNewsletterError] = useState(false);
+
+  function subscribe(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setNewsletterError(true);
+  }
+
   return (
     <footer className="site-footer">
       <div className="container">
@@ -27,11 +35,13 @@ export default function Footer() {
               <h4>{translate("Stay in the loop")}</h4>
               <p>{translate("Subscribe to receive product updates and latest news.")}</p>
 
-              <div className="footer-newsletter">
+              <form className="footer-newsletter" onSubmit={subscribe}>
                 <div className="footer-newsletter-input">
                   <Mail size={18} aria-hidden="true" />
                   <input
                     type="email"
+                    name="email"
+                    required
                     aria-label="Email address"
                     placeholder={translate("Enter your email address")}
                   />
@@ -45,7 +55,8 @@ export default function Footer() {
                   {translate("Subscribe")}
                   <ArrowRight size={17} aria-hidden="true" />
                 </button>
-              </div>
+              </form>
+              {newsletterError ? <p className="form-feedback form-error" role="alert">Newsletter sign-up is unavailable because no subscription API is implemented.</p> : null}
             </div>
 
             <div className="payment-row">

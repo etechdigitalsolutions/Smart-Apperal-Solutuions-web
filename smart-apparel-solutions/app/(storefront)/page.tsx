@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 
 import HeroSlideshow from "@/components/storefront/home/HeroSlideshow";
 import WhatDoYouSew from "@/components/storefront/home/WhatDoYouSew";
-import { categories } from "@/data/categories";
-import { products } from "@/data/products";
 import { Shirt, Scissors, Sparkles, Flower2 } from "lucide-react";
 import {
 PackageSearch,
@@ -25,38 +23,38 @@ const applications = [
     title: "Sewing & Construction",
     copy: "Single needle, overlock and interlock systems.",
     tag: "sewing-machines",
-    image: products[0].images[0],
+    image: "/images/products/0025_08-BP.jpg",
     icon: Shirt,
   },
   {
     title: "Cutting & Preparation",
     copy: "Tools that keep every cut accurate and efficient.",
     tag: "cutting",
-    image: products[2].images[0],
+    image: "/images/products/GOLDEN_EAGLE.jpg",
     icon: Scissors,
   },
   {
     title: "Finishing & Pressing",
     copy: "A polished finish for every production line.",
     tag: "ironing-finishing",
-    image: products[4].images[0],
+    image: "/images/products/Iron-Steam.jpg",
     icon: Sparkles,
   },
   {
     title: "Embroidery & Detail",
     copy: "Bring precision and personality to every piece.",
     tag: "embroidery",
-    image: products[6].images[0],
+    image: "/images/products/golden-eagle.png",
     icon: Flower2,
   },
 ];
 
 const categoryImages: Record<string, string> = {
-  "sewing-machines": products[0].images[0],
-  cutting: products[2].images[0],
-  "ironing-finishing": products[4].images[0],
-  embroidery: products[6].images[0],
-  "spare-parts": products[7].images[0],
+  "sewing-machines": "/images/products/jack_f5.jpg",
+  cutting: "/images/products/GOLDEN_EAGLE.jpg",
+  "ironing-finishing": "/images/products/Iron-Steam.jpg",
+  embroidery: "/images/products/golden-eagle.png",
+  "spare-parts": "/images/products/jack_f5.jpg",
 };
 
 const brandLogos = [
@@ -72,20 +70,29 @@ const brandLogos = [
 export default function HomePage() {
   const [liveProducts, setLiveProducts] = useState<Product[]>([]);
   const [liveCategories, setLiveCategories] = useState<Category[]>([]);
+  const [catalogError, setCatalogError] = useState("");
 
   useEffect(() => {
     let active = true;
-    Promise.all([fetchProducts(), fetchCategories()]).then(([nextProducts, nextCategories]) => {
-      if (!active) return;
-      setLiveProducts(nextProducts);
-      setLiveCategories(nextCategories);
-    });
+    Promise.all([fetchProducts(), fetchCategories()])
+      .then(([nextProducts, nextCategories]) => {
+        if (!active) return;
+        setLiveProducts(nextProducts);
+        setLiveCategories(nextCategories);
+      })
+      .catch((error: unknown) => {
+        if (active) setCatalogError(error instanceof Error ? error.message : "The live catalogue is unavailable.");
+      });
     return () => { active = false; };
   }, []);
 
-  const sourceProducts = liveProducts.length ? liveProducts : products;
-  const sourceCategories = liveCategories.length ? liveCategories : categories;
-  const collections = sourceCategories.slice(0, 5);
+  const heroSlides = liveProducts.slice(0, 3).map((product, index) => ({
+    image: product.images[0] || "/images/logo/smart-apperal-logo.png",
+    alt: product.name,
+    eyebrow: index === 0 ? "Featured" : "Available now",
+    title: product.name,
+  }));
+  const collections = liveCategories.slice(0, 5);
 
   return (
     <>
@@ -103,11 +110,12 @@ export default function HomePage() {
             <div className="hero-proof"><span>01</span><p>Trusted machines<br />for serious makers</p></div>
           </div>
           <HeroSlideshow
-            slides={[
-              { image: sourceProducts[0]?.images[0] || products[0].images[0], alt: `${sourceProducts[0]?.name || "Industrial"} product`, eyebrow: "Featured", title: sourceProducts[0]?.name || "productive workshops." },
-              { image: sourceProducts[1]?.images[0] || products[2].images[0], alt: `${sourceProducts[1]?.name || "Product"}`, eyebrow: "Available now", title: sourceProducts[1]?.name || "every production line." },
-              { image: sourceProducts[2]?.images[0] || products[4].images[0], alt: `${sourceProducts[2]?.name || "Product"}`, eyebrow: "Workshop ready", title: sourceProducts[2]?.name || "confidence." },
-            ]}
+            slides={heroSlides.length ? heroSlides : [{
+              image: "/images/logo/smart-apperal-logo.png",
+              alt: "Smart Apparel Solutions",
+              eyebrow: "Equipment catalogue",
+              title: "the right tools for your workshop.",
+            }]}
           />
         </div>
       </section>
@@ -277,11 +285,12 @@ export default function HomePage() {
           <div className="section-intro"><div><p className="eyebrow">The right tools, together</p><h2>Build your line</h2></div><p>From first stitch to final press, explore the equipment families that make a complete workshop.</p></div>
           <div className="collection-grid">
             {collections.map((category) => {
-              const matchingProduct = sourceProducts.find((product) => product.category === category.name);
-              const image = category.image || categoryImages[category.slug] || matchingProduct?.images[0] || products[0].images[0];
+              const image = category.image || categoryImages[category.slug] || "/images/logo/smart-apperal-logo.png";
               return <Link href={`/categories/${category.slug}`} key={category.slug} className="collection-card"><Image src={image} alt={category.name} fill sizes="(max-width: 640px) 100vw, 20vw" /><span className="collection-overlay" /><div><p>{category.description}</p><h3>{category.name}</h3><span className="text-link">View collection ↗</span></div></Link>;
             })}
           </div>
+          {catalogError ? <p className="form-error-text" role="alert">Live catalogue data is unavailable: {catalogError}</p> : null}
+          {!catalogError && collections.length === 0 ? <p className="empty-state">No active product categories are available.</p> : null}
         </div>
       </section>
 

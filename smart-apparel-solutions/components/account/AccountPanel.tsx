@@ -45,14 +45,6 @@ export default function AccountPanel({ title, description, children }: AccountPa
   const router = useRouter();
   const { user, logout, isHydrated } = useAuth();
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [avatar, setAvatar] = useState<string | null>(null);
-
-  useEffect(() => {
-    const storedAvatar = localStorage.getItem("profile-avatar");
-    if (storedAvatar) {
-      setAvatar(storedAvatar);
-    }
-  }, []);
 
   useEffect(() => {
     if (isHydrated && !user) router.replace("/login?returnTo=%2Faccount");
@@ -86,7 +78,7 @@ export default function AccountPanel({ title, description, children }: AccountPa
           </Link>
 
           <div className="account-user">
-            <Avatar name={user.name} src={avatar} />
+            <Avatar name={user.name} />
             <div>
               <strong>{user.name}</strong>
               <span>{user.email}</span>

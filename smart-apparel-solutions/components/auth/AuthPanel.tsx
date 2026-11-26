@@ -13,7 +13,6 @@ import {
   LockKeyhole,
   Mail,
   MailCheck,
-  Phone,
   ShieldCheck,
   Sparkles,
   User,
@@ -22,17 +21,13 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useWishlist } from "@/hooks/useWishlist";
+import { authService } from "@/services/authService";
 
 type Mode = "login" | "register" | "forgot" | "reset";
 
 interface AuthPanelProps {
   mode: Mode;
 }
-
-const DEMO_EMAIL = "demo@smartapparel.com";
-const DEMO_PASSWORD = "SmartApparel123!";
-// Demo credentials are only shown outside production.
-const SHOW_DEMO = process.env.NODE_ENV !== "production";
 
 const titles: Record<Mode, string> = {
   login: "Welcome back",
@@ -129,8 +124,7 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
   const [pending, setPending] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState(mode === "login" && SHOW_DEMO ? DEMO_EMAIL : "");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -157,9 +151,6 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
     }
     if (needsEmail && !/^\S+@\S+\.\S+$/.test(email.trim())) {
       next.email = "Enter a valid email address.";
-    }
-    if (mode === "register" && phone && !/^[0-9+\s-]{9,15}$/.test(phone.trim())) {
-      next.phone = "Enter a valid phone number.";
     }
     if (needsPassword && password.length < 8) {
       next.password = "Your password must be at least 8 characters.";
@@ -195,20 +186,11 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
       setPending(true);
       try {
         if (mode === "register") {
-          const response = await fetch("/api/auth", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "register",
-              name: name.trim(),
-              email: email.trim(),
-              username: email.trim(),
-              password,
-              roleId: 2,
-            }),
+          await authService.register({
+            name: name.trim(),
+            email: email.trim(),
+            password,
           });
-          const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
-          if (!response.ok || !result?.success) throw new Error(result?.message || "Registration failed.");
         } else if (mode === "forgot") {
           throw new Error("Password reset by email requires an email-reset RPC or Supabase Auth reset flow.");
         } else if (mode === "reset") {
@@ -240,13 +222,6 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "Unable to sign in.");
     }
-  }
-
-  function useDemo() {
-    setEmail(DEMO_EMAIL);
-    setPassword(DEMO_PASSWORD);
-    setError("");
-    setFieldErrors({});
   }
 
   function onBlurValidate() {
@@ -407,32 +382,6 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
                 </Field>
               ) : null}
 
-              {mode === "register" ? (
-                <Field
-                  id="phone"
-                  label="Phone number (optional)"
-                  icon={<Phone size={17} />}
-                  error={fieldErrors.phone}
-                >
-                  {(cls) => (
-                    <input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      autoComplete="tel"
-                      placeholder="07x xxx xxxx"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      onBlur={onBlurValidate}
-                      disabled={busy}
-                      className={cls}
-                      aria-invalid={Boolean(fieldErrors.phone)}
-                      aria-describedby={fieldErrors.phone ? "phone-error" : undefined}
-                    />
-                  )}
-                </Field>
-              ) : null}
-
               {needsPassword ? (
                 <div>
                   <Field
@@ -551,17 +500,6 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
                 )}
               </button>
 
-              {mode === "login" && SHOW_DEMO ? (
-                <div className="demo-hint">
-                  <div>
-                    <span>Demo access</span>
-                    <strong>{DEMO_EMAIL}</strong>
-                  </div>
-                  <button type="button" onClick={useDemo} className="btn btn-outline">
-                    Autofill login
-                  </button>
-                </div>
-              ) : null}
             </form>
           )}
 

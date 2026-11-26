@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -14,13 +14,16 @@ export default function OrderConfirmationPage() {
   const [customer, setCustomer] = useState<CheckoutFormData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [orderReference, setOrderReference] = useState("");
+  const processed = useRef(false);
 
   useEffect(() => {
+    if (processed.current) return;
+    let frame: number | undefined;
     try {
       const savedDetails = sessionStorage.getItem("checkoutDetails");
-      setOrderReference(sessionStorage.getItem("orderReference") ?? "");
+      const savedReference = sessionStorage.getItem("orderReference");
 
-      if (!savedDetails) {
+      if (!savedDetails || !savedReference) {
         router.replace("/checkout");
         return;
       }
@@ -44,15 +47,20 @@ export default function OrderConfirmationPage() {
         return;
       }
 
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCustomer(parsed);
-      clearCart();
-      sessionStorage.removeItem("checkoutDetails");
+      frame = window.requestAnimationFrame(() => {
+        processed.current = true;
+        setOrderReference(savedReference);
+        setCustomer(parsed);
+        clearCart();
+        sessionStorage.removeItem("checkoutDetails");
+        setIsLoading(false);
+      });
     } catch {
       router.replace("/checkout");
-    } finally {
-      setIsLoading(false);
     }
+    return () => {
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
+    };
   }, [clearCart, router]);
 
   if (isLoading) {
@@ -88,8 +96,8 @@ export default function OrderConfirmationPage() {
           <p className="eyebrow">Thank you</p>
           <h1>Your request is with our team.</h1>
           <p>
-            We will contact you with availability, delivery timing
-            and the best payment option for your order.
+            Your order has been recorded. Our team will contact you to confirm
+            availability, delivery timing and payment arrangements.
           </p>
           <div className="co-order-reference">
             <span>Order reference</span>
@@ -132,8 +140,9 @@ export default function OrderConfirmationPage() {
           </div>
 
           <p className="co-confirm-note">
-            This is a frontend preview. No quotation request has
-            been submitted to the server yet.
+            The current order service records the items, quantities, email and
+            notes. Shipping and payment preferences are shown for this
+            confirmation only and are not yet stored with the order.
           </p>
 
           <Link href="/products" className="btn btn-primary">

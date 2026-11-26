@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
 export async function POST() {
-  return NextResponse.json({ url: "" });
+  return NextResponse.json(
+    { success: false, message: "File upload API is not implemented." },
+    { status: 501 },
+  );
 }

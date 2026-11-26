@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Shirt,
@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 
 import { sewingApplications } from "@/data/sewingCustomization";
-import { products } from "@/data/products";
+import { fetchProducts } from "@/lib/api/catalog";
+import type { Product } from "@/types";
 
 const applicationIcons = [
   Shirt,
@@ -39,6 +40,18 @@ const applicationIcons = [
 
 export default function WhatDoYouSew() {
   const [step, setStep] = useState(1);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [productError, setProductError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetchProducts()
+      .then((items) => { if (active) setProducts(items); })
+      .catch(() => { if (active) setProductError("Live product recommendations are unavailable."); })
+      .finally(() => { if (active) setIsLoadingProducts(false); });
+    return () => { active = false; };
+  }, []);
 
   const [selectedApplication, setSelectedApplication] = useState("");
   const [selectedProductType, setSelectedProductType] = useState("");
@@ -59,13 +72,11 @@ export default function WhatDoYouSew() {
     (item) => item.id === selectedOperation
   );
 
-  const recommendedProducts = useMemo(() => {
-    if (!operation) return [];
-
-    return products.filter((product) =>
-      operation.recommendedProductIds.includes(product.id)
-    );
-  }, [operation]);
+  const recommendedProducts = operation
+    ? products.filter((product) =>
+        operation.recommendedProductIds.includes(product.id)
+      )
+    : [];
 
   const handleApplicationSelect = (id: string) => {
     setSelectedApplication(id);
@@ -106,7 +117,7 @@ export default function WhatDoYouSew() {
   const selectedOperationName =
     operation?.title || customOperation.trim();
 
-  const productImage = (product: (typeof products)[number]) =>
+  const productImage = (product: Product) =>
     product.images?.[0] || "";
 
   return (
@@ -336,7 +347,9 @@ export default function WhatDoYouSew() {
                       </div>
                     </div>
 
-                    {recommendedProducts.length > 0 ? (
+                    {isLoadingProducts ? <p role="status">Loading live product recommendations...</p> : null}
+                    {!isLoadingProducts && productError ? <p role="alert">{productError}</p> : null}
+                    {!isLoadingProducts && !productError && recommendedProducts.length > 0 ? (
                       <div className="what-sew-product-list">
                         {recommendedProducts.map((product) => (
                           <div
@@ -394,7 +407,7 @@ export default function WhatDoYouSew() {
                           </div>
                         ))}
                       </div>
-                    ) : (
+                    ) : !isLoadingProducts && !productError ? (
                       <div className="what-sew-no-results">
                         <h4>No exact machine match found</h4>
                         <p>
@@ -404,7 +417,7 @@ export default function WhatDoYouSew() {
                           solution.
                         </p>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </>

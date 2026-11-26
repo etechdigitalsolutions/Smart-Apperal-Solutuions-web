@@ -153,8 +153,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(invoicePayload),
     });
     if (!invoiceResponse.ok) {
-      const detail = await invoiceResponse.text();
-      return NextResponse.json({ success: false, message: "Unable to create invoice.", detail }, { status: invoiceResponse.status });
+      return NextResponse.json({ success: false, message: "Unable to create invoice." }, { status: invoiceResponse.status });
     }
     const invoices = await invoiceResponse.json() as Record<string, unknown>[];
     const invoice = invoices[0];

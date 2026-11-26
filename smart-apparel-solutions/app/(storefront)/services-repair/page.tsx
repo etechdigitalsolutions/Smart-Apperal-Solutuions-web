@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { createReference, saveInquiry } from "@/lib/utils/inquiries";
 import {
   Wrench,
   Settings2,
@@ -53,7 +52,7 @@ export default function ServicesRepairPage() {
   const { user } = useAuth();
   const [images, setImages] = useState<string[]>([]);
   const [imageError, setImageError] = useState("");
-  const [submittedReference, setSubmittedReference] = useState("");
+  const [submissionError, setSubmissionError] = useState(false);
 
   function handleImages(event: ChangeEvent<HTMLInputElement>) {
     setImageError("");
@@ -81,25 +80,7 @@ export default function ServicesRepairPage() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const reference = createReference("INQ");
-    saveInquiry({
-      id: crypto.randomUUID(),
-      reference,
-      type: "Service & Repair",
-      name: String(data.get("name") || user?.name || ""),
-      email: String(data.get("email") || user?.email || ""),
-      phone: String(data.get("phone") || ""),
-      message: String(data.get("message") || ""),
-      status: "Pending",
-      images,
-      userId: user?.id,
-      createdAt: new Date().toISOString(),
-    });
-    form.reset();
-    setImages([]);
-    setSubmittedReference(reference);
+    setSubmissionError(true);
   }
 
   return (
@@ -252,7 +233,7 @@ export default function ServicesRepairPage() {
             </div>
             <label className="inquiry-upload">
               <strong>Upload images</strong>
-              <span>JPG, PNG or WEBP, up to 5 MB each</span>
+              <span>Preview only; files cannot be submitted until an upload API is available.</span>
               <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleImages} />
             </label>
             {imageError ? <p className="form-error-text" role="alert">{imageError}</p> : null}
@@ -268,9 +249,11 @@ export default function ServicesRepairPage() {
               </div>
             ) : null}
             <button type="submit" className="btn btn-primary">Submit inquiry</button>
-            {submittedReference ? (
-              <div className="form-feedback form-success" role="status">
-                Inquiry submitted successfully. Your reference number is <strong>{submittedReference}</strong>.
+            {submissionError ? (
+              <div className="form-feedback form-error" role="alert">
+                The service inquiry could not be submitted because no backend
+                inquiry endpoint is implemented. Your details and image
+                previews have not been saved.
               </div>
             ) : null}
           </form>

@@ -1,11 +1,9 @@
-
 "use client";
 
 import {
   createContext,
   useContext,
-  useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -19,46 +17,73 @@ interface WishlistContextType {
 const WishlistContext = createContext<WishlistContextType | undefined>(
   undefined
 );
+const serverWishlist: string[] = [];
+const subscribers = new Set<() => void>();
+let cachedWishlist: string[] | undefined;
+
+function getWishlistSnapshot() {
+  if (typeof window === "undefined") return serverWishlist;
+  if (cachedWishlist) return cachedWishlist;
+
+  const saved = localStorage.getItem("wishlist");
+  if (!saved) {
+    cachedWishlist = serverWishlist;
+    return cachedWishlist;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    cachedWishlist = Array.isArray(parsed) && parsed.every((id) => typeof id === "string")
+      ? parsed
+      : serverWishlist;
+  } catch {
+    cachedWishlist = serverWishlist;
+  }
+  return cachedWishlist;
+}
+
+function notifyStorageChange() {
+  cachedWishlist = undefined;
+  subscribers.forEach((subscriber) => subscriber());
+}
+
+function subscribe(subscriber: () => void) {
+  subscribers.add(subscriber);
+  window.addEventListener("storage", notifyStorageChange);
+  return () => {
+    subscribers.delete(subscriber);
+    window.removeEventListener("storage", notifyStorageChange);
+  };
+}
+
+function saveWishlist(wishlist: string[]) {
+  localStorage.setItem("wishlist", JSON.stringify(wishlist));
+  cachedWishlist = wishlist;
+  subscribers.forEach((subscriber) => subscriber());
+}
 
 export function WishlistProvider({ children }: { children: ReactNode }) {
-  const [wishlist, setWishlist] = useState<string[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const wishlist = useSyncExternalStore(
+    subscribe,
+    getWishlistSnapshot,
+    () => serverWishlist
+  );
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("wishlist");
-      if (saved) {
-        const parsed: unknown = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.every((id) => typeof id === "string")) {
-          setWishlist(parsed);
-        }
-      }
-    } catch {
-      localStorage.removeItem("wishlist");
-    } finally {
-      setIsLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem("wishlist", JSON.stringify(wishlist));
-    }
-  }, [wishlist, isLoaded]);
-
-  const toggle = (id: string) => {
-    setWishlist((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+  function toggle(id: string) {
+    saveWishlist(
+      wishlist.includes(id)
+        ? wishlist.filter((item) => item !== id)
+        : [...wishlist, id]
     );
-  };
+  }
 
-  const add = (id: string) => {
-    setWishlist((prev) => (prev.includes(id) ? prev : [...prev, id]));
-  };
+  function add(id: string) {
+    if (!wishlist.includes(id)) saveWishlist([...wishlist, id]);
+  }
 
-  const remove = (id: string) => {
-    setWishlist((prev) => prev.filter((item) => item !== id));
-  };
+  function remove(id: string) {
+    saveWishlist(wishlist.filter((item) => item !== id));
+  }
 
   return (
     <WishlistContext.Provider value={{ wishlist, toggle, add, remove }}>

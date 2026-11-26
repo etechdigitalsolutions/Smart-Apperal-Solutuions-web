@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await context.params;
-  const upstream = await fetch(
-    `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/products?limit=200`,
-    { cache: "no-store" },
-  );
+  const productsUrl = new URL("/api/products", request.nextUrl.origin);
+  productsUrl.searchParams.set("limit", "200");
+  const upstream = await fetch(productsUrl, { cache: "no-store" });
   if (!upstream.ok) {
     return NextResponse.json({ success: false, message: "Unable to load product." }, { status: upstream.status });
   }
