@@ -44,6 +44,7 @@ export interface CheckoutFormData {
 interface CheckoutFormProps {
   onSubmit: (data: CheckoutFormData) => void;
   isSubmitting?: boolean;
+  customerEmail: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -177,13 +178,13 @@ function AddressFields({ value, onChange, prefix }: AddressFieldsProps) {
 export default function CheckoutForm({
   onSubmit,
   isSubmitting = false,
+  customerEmail,
 }: CheckoutFormProps) {
   const { items } = useCart();
 
   const [website, setWebsite] = useState(""); // honeypot
 
   const [delivery, setDeliveryState] = useState<DeliveryMethod>("ship");
-  const [email, setEmail] = useState("");
 
   const [address, setAddress] = useState<AddressData>(EMPTY_ADDRESS); // shipping (or billing when pickup)
   const [billing, setBilling] = useState<AddressData>(EMPTY_ADDRESS); // only used if "same as shipping" is off
@@ -251,7 +252,7 @@ export default function CheckoutForm({
       firstName: main.firstName,
       lastName: main.lastName,
       fullName: `${main.firstName} ${main.lastName}`.trim(),
-      email: email.trim(),
+      email: customerEmail,
       phone: main.phone,
       line1: isPickup ? "" : main.line1,
       line2: isPickup ? "" : main.line2,
@@ -287,26 +288,22 @@ export default function CheckoutForm({
       {/* ---------- Contact information ---------- */}
       <div className="co-heading-row">
         <h2 className="co-heading">Contact information</h2>
-        <Link href="/login" className="co-login">Log in</Link>
+        <span className="co-login">Verified customer</span>
       </div>
 
       <label className="co-field">
         <input
-          required
           name="email"
           type="email"
           autoComplete="email"
           maxLength={254}
           placeholder=" "
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={customerEmail}
+          readOnly
         />
         <span>Email address</span>
       </label>
-      <p className="co-hint">You are currently checking out as a guest.</p>
-      <p className="co-hint">
-        Want an account? <Link href="/register">Register before checkout</Link>.
-      </p>
+      <p className="co-hint">This order will be saved to your customer account.</p>
 
       {/* ---------- Delivery ---------- */}
       <h2 className="co-heading">Delivery</h2>

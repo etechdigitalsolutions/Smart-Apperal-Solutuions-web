@@ -33,7 +33,7 @@ export default function CartPage() {
       </Link>
 
       <h1>Your cart</h1>
-      <p className="cart-summary-hint">Your cart is saved in this browser. It is sent to the server only when you place the order.</p>
+      <p className="cart-summary-hint">Your cart is saved in this browser. After you sign in, it is synchronized to your customer account and validated by the server before the order is placed.</p>
 
       <div className="cart-layout">
         <section className="cart-list" aria-label="Cart items">

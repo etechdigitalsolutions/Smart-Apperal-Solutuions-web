@@ -11,7 +11,7 @@ import { formatCurrency } from "@/lib/utils/helpers";
 import type { Product } from "@/types";
 
 export default function WishlistPage() {
-  const { wishlist, remove } = useWishlist();
+  const { wishlist, remove, error: wishlistError } = useWishlist();
   const { addItem } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,7 +28,7 @@ export default function WishlistPage() {
 
   const savedProducts = products.filter((product) => wishlist.includes(product.id));
   return <AccountPanel title="My wishlist" description="Your carefully selected shortlist for the next workshop upgrade.">
-    <p className="form-feedback" role="note">Wishlist items are stored on this device only; the backend does not provide wishlist persistence.</p>
+    {wishlistError ? <p className="form-feedback form-error" role="alert">{wishlistError}</p> : null}
     {isLoading ? <div className="empty-state" role="status">Loading current product details...</div> : null}
     {error ? <div className="empty-state" role="alert">{error}</div> : null}
     {!isLoading && !error && !savedProducts.length ? <div className="account-empty"><span className="empty-icon"><Heart size={28} /></span><h2>{wishlist.length ? "Saved products are unavailable" : "Your wishlist is waiting"}</h2><p>{wishlist.length ? "Some saved product IDs are no longer in the live catalogue." : "Save machines, accessories and parts while you compare the right fit for your workshop."}</p><Link href="/products" className="btn btn-primary">Browse equipment</Link></div> : null}

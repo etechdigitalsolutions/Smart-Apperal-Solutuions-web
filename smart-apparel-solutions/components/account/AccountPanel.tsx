@@ -45,6 +45,7 @@ export default function AccountPanel({ title, description, children }: AccountPa
   const router = useRouter();
   const { user, logout, isHydrated } = useAuth();
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     if (isHydrated && !user) router.replace("/login?returnTo=%2Faccount");
@@ -62,10 +63,16 @@ export default function AccountPanel({ title, description, children }: AccountPa
     );
   }
 
-  function handleLogout() {
-    logout();
-    setConfirmLogout(false);
-    router.replace("/login");
+  async function handleLogout() {
+    try {
+      await logout();
+      setConfirmLogout(false);
+      router.replace("/login");
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error ? error.message : "Unable to sign out.",
+      );
+    }
   }
 
   return (
@@ -141,6 +148,11 @@ export default function AccountPanel({ title, description, children }: AccountPa
           </>
         }
       >
+        {logoutError ? (
+          <p className="form-feedback form-error" role="alert">
+            {logoutError}
+          </p>
+        ) : null}
         <p>You will need to sign in again to access your account, orders and wishlist.</p>
       </Modal>
     </main>

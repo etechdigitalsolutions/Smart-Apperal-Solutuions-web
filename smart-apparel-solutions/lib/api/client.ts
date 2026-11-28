@@ -32,6 +32,7 @@ export async function apiFetch<T>(
 
   const res = await fetch(getRequestUrl(endpoint), {
     ...options,
+    credentials: options?.credentials ?? "same-origin",
     headers,
   });
   const responseText = await res.text();

@@ -9,15 +9,19 @@ import CheckoutForm, {
 } from "@/components/storefront/checkout/CheckoutForm";
 import CheckoutSummary from "@/components/storefront/checkout/CheckoutSummary";
 import { useCart } from "@/hooks/useCart";
+import { useAuth } from "@/hooks/useAuth";
 
 import { orderService } from "@/services/orderService";
+import { customerService } from "@/services/customerService";
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items } = useCart();
+  const { user, isHydrated } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const shellRef = useRef<HTMLElement>(null);
+  const orderKeyRef = useRef("");
   const hasItems = items.length > 0;
 
 
@@ -51,17 +55,45 @@ export default function CheckoutPage() {
 
 async function handleCheckout(data: CheckoutFormData) {
   if (items.length === 0 || isSubmitting) return;
+  if (!user) {
+    setCheckoutError("Sign in with your customer account before placing an order.");
+    return;
+  }
 
   setIsSubmitting(true);
 
   try {
+    await customerService.saveCart(items);
     const apiResult = await orderService.create({
-      website: "",
-      email: data.email,
+      idempotencyKey: orderKeyRef.current || (orderKeyRef.current = crypto.randomUUID()),
       items: items.map((item) => ({
-        productId: item.productId,
+        itemId: Number(item.productId),
         quantity: item.quantity,
       })),
+      shippingAddress: {
+        fullName: data.fullName,
+        phone: data.phone || data.billing?.phone || "",
+        line1: data.line1 || data.billing?.line1 || "",
+        line2: data.line2 || data.billing?.line2 || "",
+        city: data.city || data.billing?.city || "",
+        state: data.state || "",
+        postalCode: data.postalCode || data.billing?.postalCode || "",
+        country: data.country || data.billing?.country || "",
+      },
+      deliveryMethod: data.delivery === "pickup" ? "pickup" : "delivery",
+      paymentMethod:
+        data.payment === "Visa / MasterCard"
+          ? "webxpay"
+          : data.payment === "Direct bank transfer"
+            ? "bank_transfer"
+            : data.payment === "Cheque payments"
+              ? "cheque"
+              : data.payment === "Koko"
+                ? "koko"
+                : data.delivery === "pickup"
+                  ? "cash_on_pickup"
+                  : "cash_on_delivery",
+      couponCode: null,
       notes: data.notes,
     });
 
@@ -73,6 +105,7 @@ async function handleCheckout(data: CheckoutFormData) {
       throw new Error("The order service did not return an order reference.");
     }
 
+    orderKeyRef.current = "";
     sessionStorage.setItem("checkoutDetails", JSON.stringify(data));
     sessionStorage.setItem("orderReference", apiResult.reference);
 
@@ -96,6 +129,42 @@ async function handleCheckout(data: CheckoutFormData) {
           </div>
           <Link href="/products" className="btn btn-primary">
             Continue Shopping
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (!isHydrated) {
+    return (
+      <main className="page-shell">
+        <div className="container narrow-content">
+          <p role="status">Checking your customer session…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="page-shell">
+        <div className="container narrow-content">
+          <div className="page-heading">
+            <p className="eyebrow">Customer account required</p>
+            <h1>Sign in to place your order</h1>
+            <p>
+              Orders are linked securely to your verified customer account.
+              Sign in or create an account to continue.
+            </p>
+          </div>
+          <Link
+            href="/login?returnTo=%2Fcheckout"
+            className="btn btn-primary"
+          >
+            Sign in
+          </Link>{" "}
+          <Link href="/register" className="btn btn-outline">
+            Create an account
           </Link>
         </div>
       </main>
@@ -130,6 +199,7 @@ async function handleCheckout(data: CheckoutFormData) {
           <CheckoutForm
             onSubmit={handleCheckout}
             isSubmitting={isSubmitting}
+            customerEmail={user.email}
           />
         </div>
       </div>

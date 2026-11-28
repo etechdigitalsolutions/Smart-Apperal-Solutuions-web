@@ -1,199 +1,288 @@
-
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getCustomerSession,
+  isSupabaseConfigured,
+  supabaseFetch,
+} from "@/lib/supabase-server";
 
-const MAX_BODY_SIZE = 16 * 1024; // 16 KB
+const MAX_BODY_SIZE = 16 * 1024;
+
+interface SubmittedItem {
+  item_id: number;
+  quantity: number;
+}
+
+interface SubmittedOrder {
+  items: SubmittedItem[];
+  idempotencyKey: string;
+  shippingAddress: {
+    fullName: string;
+    phone: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    postalCode: string;
+    country: string;
+    state?: string;
+  };
+  deliveryMethod: "delivery" | "pickup";
+  paymentMethod: string;
+  couponCode: string | null;
+  notes: string;
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function isRejectedResult(value: unknown): boolean {
+  if (value === false) return true;
+  if (Array.isArray(value)) return value.some(isRejectedResult);
+  if (!value || typeof value !== "object") return false;
+  const result = value as Record<string, unknown>;
+  return (
+    result.success === false ||
+    result.valid === false ||
+    result.is_valid === false ||
+    result.available === false
+  );
+}
+
+function recordFrom(value: unknown): Record<string, unknown> | null {
+  if (Array.isArray(value)) return recordFrom(value[0]);
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
 
 export async function GET() {
+  if (!isSupabaseConfigured()) {
+    return NextResponse.json(
+      { success: false, message: "Supabase is not configured." },
+      { status: 503 },
+    );
+  }
+  const customer = await getCustomerSession();
+  if (!customer) {
+    return NextResponse.json(
+      { success: false, message: "A verified customer session is required." },
+      { status: 401 },
+    );
+  }
+
+  const upstream = await supabaseFetch(
+    "/website_orders?select=*,website_order_items(*)&order=created_at.desc",
+    {},
+    customer.accessToken,
+  );
+  const data = await readJson(upstream);
   return NextResponse.json(
-    { message: "Order listing is not implemented yet." },
-    { status: 501 }
+    { success: upstream.ok, data },
+    { status: upstream.status },
   );
 }
 
 export async function POST(request: NextRequest) {
-  const contentType = request.headers.get("content-type") ?? "";
-
-  if (!contentType.toLowerCase().includes("application/json")) {
+  if (!isSupabaseConfigured()) {
     return NextResponse.json(
-      { message: "Content-Type must be application/json." },
-      { status: 415 }
+      { success: false, message: "Supabase is not configured." },
+      { status: 503 },
     );
   }
 
-  const contentLength = Number(request.headers.get("content-length"));
-
-  if (
-    request.headers.has("content-length") &&
-    (!Number.isSafeInteger(contentLength) || contentLength < 0)
-  ) {
+  const customer = await getCustomerSession();
+  if (!customer) {
     return NextResponse.json(
-      { message: "Invalid Content-Length." },
-      { status: 400 }
+      { success: false, message: "Sign in with a verified customer account to place an order." },
+      { status: 401 },
     );
   }
 
-  if (contentLength > MAX_BODY_SIZE) {
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
     return NextResponse.json(
-      { message: "Request body is too large." },
-      { status: 413 }
+      { success: false, message: "Request body is too large." },
+      { status: 413 },
     );
   }
 
-  let body: unknown;
-
+  let submitted: SubmittedOrder;
   try {
-    const rawBody = await request.text();
-
-    // Check the actual body size too; Content-Length can be absent.
-    if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_SIZE) {
-      return NextResponse.json(
-        { message: "Request body is too large." },
-        { status: 413 }
-      );
+    const body: unknown = JSON.parse(rawBody);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new Error("Invalid request body.");
     }
-
-    body = JSON.parse(rawBody);
-  } catch {
-    return NextResponse.json(
-      { message: "Invalid JSON body." },
-      { status: 400 }
-    );
-  }
-
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    Array.isArray(body)
-  ) {
-    return NextResponse.json(
-      { message: "Invalid request body." },
-      { status: 400 }
-    );
-  }
-
-  const data = body as Record<string, unknown>;
-
-  // Honeypot: legitimate submissions should leave this field empty.
-  if (
-    typeof data.website !== "string" ||
-    data.website.trim() !== ""
-  ) {
-    return NextResponse.json(
-      { message: "Invalid submission." },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const { isSupabaseConfigured, supabaseFetch } = await import("@/lib/supabase-server");
-    if (!isSupabaseConfigured()) {
-      return NextResponse.json({ success: false, message: "SUPABASE_ANON_KEY is not configured." }, { status: 503 });
+    const input = body as Record<string, unknown>;
+    const rawItems = input.items;
+    const address = input.shippingAddress;
+    if (!Array.isArray(rawItems) || !rawItems.length) {
+      throw new Error("At least one cart item is required.");
     }
-
-    const items = Array.isArray((body as Record<string, unknown>).items)
-      ? (body as Record<string, unknown>).items as Array<Record<string, unknown>>
-      : [];
-    if (!items.length) {
-      return NextResponse.json({ success: false, message: "At least one item is required." }, { status: 400 });
+    if (!address || typeof address !== "object" || Array.isArray(address)) {
+      throw new Error("A shipping address is required.");
     }
-
-    const itemIds = items.map((item) => String(item.productId ?? item.item_id ?? "")).filter(Boolean);
-    const itemParams = new URLSearchParams({
-      select: "*",
-      item_id: `in.(${itemIds.join(",")})`,
-    });
-    const productsResponse = await supabaseFetch(`/items?${itemParams}`);
-    if (!productsResponse.ok) {
-      return NextResponse.json({ success: false, message: "Unable to verify product prices." }, { status: 502 });
-    }
-    const products = await productsResponse.json() as Record<string, unknown>[];
-    const productMap = new Map(products.map((product) => [String(product.item_id ?? product.id), product]));
-
-    let subtotal = 0;
-    const verifiedItems = items.map((item) => {
-      const productId = String(item.productId ?? item.item_id ?? "");
-      const quantity = Number(item.quantity ?? 0);
-      const product = productMap.get(productId);
-      if (!product || !Number.isInteger(quantity) || quantity < 1) {
-        throw new Error("INVALID_ITEM");
+    const addressInput = address as Record<string, unknown>;
+    const items = rawItems.map((item): SubmittedItem => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error("Invalid cart item.");
       }
-      const unitPrice = Number(product.retail_price ?? product.selling_price ?? product.price ?? 0);
-      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-        throw new Error("INVALID_PRICE");
+      const record = item as Record<string, unknown>;
+      const itemId = Number(record.itemId ?? record.item_id ?? record.productId);
+      const quantity = Number(record.quantity);
+      if (
+        !Number.isSafeInteger(itemId) ||
+        itemId < 1 ||
+        !Number.isSafeInteger(quantity) ||
+        quantity < 1
+      ) {
+        throw new Error("Cart item IDs and quantities must be positive integers.");
       }
-      subtotal += unitPrice * quantity;
-      return { productId, quantity, unitPrice, total: unitPrice * quantity };
+      return { item_id: itemId, quantity };
     });
 
-    const invoiceNumber = `SAS-${Date.now()}`;
-    const total = Math.max(0, subtotal);
-    const invoicePayload = {
-      invoice_number: invoiceNumber,
-      subtotal,
-      discount: 0,
-      tax: 0,
-      total,
-      paid_amount: 0,
-      balance: total,
-      payment_status: "Pending",
-      invoice_date: new Date().toISOString(),
-      notes: typeof (body as Record<string, unknown>).notes === "string"
-        ? String((body as Record<string, unknown>).notes)
-        : "",
-      status: "Active",
-      created_by: typeof (body as Record<string, unknown>).email === "string"
-        ? String((body as Record<string, unknown>).email)
-        : "guest",
-      is_manual: false,
+    const deliveryMethod =
+      input.deliveryMethod === "pickup" ? "pickup" : input.deliveryMethod;
+    if (deliveryMethod !== "delivery" && deliveryMethod !== "pickup") {
+      throw new Error("A valid delivery method is required.");
+    }
+    const paymentMethod =
+      typeof input.paymentMethod === "string" ? input.paymentMethod.trim() : "";
+    const idempotencyKey =
+      typeof input.idempotencyKey === "string" ? input.idempotencyKey : "";
+    if (!paymentMethod || paymentMethod.length > 50) {
+      throw new Error("A valid payment method is required.");
+    }
+    if (!idempotencyKey || idempotencyKey.length > 128) {
+      throw new Error("A valid order idempotency key is required.");
+    }
+    const fullName =
+      typeof addressInput.fullName === "string" ? addressInput.fullName.trim() : "";
+    const phone =
+      typeof addressInput.phone === "string" ? addressInput.phone.trim() : "";
+    if (!fullName || !phone) {
+      throw new Error("A name and phone number are required.");
+    }
+
+    submitted = {
+      items,
+      idempotencyKey,
+      shippingAddress: {
+        fullName,
+        phone,
+        line1: String(addressInput.line1 ?? ""),
+        line2: String(addressInput.line2 ?? ""),
+        city: String(addressInput.city ?? ""),
+        postalCode: String(addressInput.postalCode ?? ""),
+        country: String(addressInput.country ?? ""),
+        state: String(addressInput.state ?? ""),
+      },
+      deliveryMethod,
+      paymentMethod,
+      couponCode:
+        typeof input.couponCode === "string" && input.couponCode.trim()
+          ? input.couponCode.trim()
+          : null,
+      notes: typeof input.notes === "string" ? input.notes.slice(0, 1000) : "",
     };
-
-    const invoiceResponse = await supabaseFetch("/invoices", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(invoicePayload),
-    });
-    if (!invoiceResponse.ok) {
-      return NextResponse.json({ success: false, message: "Unable to create invoice." }, { status: invoiceResponse.status });
-    }
-    const invoices = await invoiceResponse.json() as Record<string, unknown>[];
-    const invoice = invoices[0];
-    if (!invoice) {
-      return NextResponse.json({ success: false, message: "Invoice response did not include a record." }, { status: 502 });
-    }
-    const invoiceId = Number(invoice.invoice_id ?? invoice.id);
-
-    for (const item of verifiedItems) {
-      const itemResponse = await supabaseFetch("/invoice_items", {
-        method: "POST",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({
-          invoice_id: invoiceId,
-          item_id: Number(item.productId),
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          discount: 0,
-          tax: 0,
-          total: item.total,
-        }),
-      });
-      if (!itemResponse.ok) {
-        return NextResponse.json({ success: false, message: "Invoice created but an invoice item failed.", reference: invoiceNumber }, { status: 502 });
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      reference: invoiceNumber,
-      subtotal,
-      total,
-    });
   } catch (error) {
-    if (error instanceof Error && error.message === "INVALID_ITEM") {
-      return NextResponse.json({ success: false, message: "One or more cart items are invalid." }, { status: 400 });
-    }
-    if (error instanceof Error && error.message === "INVALID_PRICE") {
-      return NextResponse.json({ success: false, message: "One or more product prices are invalid." }, { status: 400 });
-    }
-    return NextResponse.json({ success: false, message: "Unable to process the order." }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          error instanceof Error ? error.message : "Invalid order request.",
+      },
+      { status: 400 },
+    );
   }
+
+  const validation = await supabaseFetch("/rpc/public_validate_cart", {
+    method: "POST",
+    body: JSON.stringify({ p_items: submitted.items }),
+  });
+  const validationData = await readJson(validation);
+  if (!validation.ok || isRejectedResult(validationData)) {
+    const details = recordFrom(validationData);
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          (typeof details?.message === "string" && details.message) ||
+          "One or more cart items are unavailable or have changed in price.",
+        data: validationData,
+      },
+      { status: 409 },
+    );
+  }
+
+  const orderResponse = await supabaseFetch(
+    "/rpc/fn_create_web_order",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_idempotency_key: submitted.idempotencyKey,
+        p_items: submitted.items,
+        p_shipping_address: {
+          full_name: submitted.shippingAddress.fullName,
+          phone: submitted.shippingAddress.phone,
+          line1: submitted.shippingAddress.line1,
+          line2: submitted.shippingAddress.line2,
+          city: submitted.shippingAddress.city,
+          state: submitted.shippingAddress.state,
+          postal_code: submitted.shippingAddress.postalCode,
+          country: submitted.shippingAddress.country,
+        },
+        p_delivery_method: submitted.deliveryMethod,
+        p_payment_method: submitted.paymentMethod,
+        p_coupon_code: submitted.couponCode,
+        p_notes: submitted.notes,
+      }),
+    },
+    customer.accessToken,
+  );
+  const orderData = await readJson(orderResponse);
+  if (!orderResponse.ok || isRejectedResult(orderData)) {
+    const details = recordFrom(orderData);
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          (typeof details?.message === "string" && details.message) ||
+          "Unable to place the order.",
+        data: orderData,
+      },
+      { status: orderResponse.ok ? 400 : orderResponse.status },
+    );
+  }
+
+  const order = recordFrom(orderData);
+  const referenceValue =
+    order?.order_reference ??
+    order?.reference ??
+    order?.website_order_id ??
+    order?.order_id ??
+    order?.id ??
+    (typeof orderData === "string" || typeof orderData === "number"
+      ? orderData
+      : null);
+  if (referenceValue === null || referenceValue === undefined) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: "The order response did not include an order reference.",
+        data: orderData,
+      },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json(
+    { success: true, reference: String(referenceValue), data: orderData },
+    { status: 201 },
+  );
 }

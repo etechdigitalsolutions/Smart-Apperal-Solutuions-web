@@ -1,16 +1,17 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, LockKeyhole, LogOut, Trash2 } from "lucide-react";
 import AccountPanel from "@/components/account/AccountPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { Modal } from "@/components/ui/modal";
 import { authService } from "@/services/authService";
+import { customerService } from "@/services/customerService";
 
 export default function UserSettingsPage() {
   const router = useRouter();
-  const { logout, user } = useAuth();
+  const { logout } = useAuth();
   const [deleteError, setDeleteError] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -20,15 +21,66 @@ export default function UserSettingsPage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordChanged, setPasswordChanged] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+  const [emailUpdates, setEmailUpdates] = useState(false);
+  const [whatsappUpdates, setWhatsappUpdates] = useState(false);
+  const [preferencesError, setPreferencesError] = useState("");
+  const [preferencesSaved, setPreferencesSaved] = useState(false);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    customerService
+      .getPreferences()
+      .then((result) => {
+        if (!result.success || !Array.isArray(result.data)) {
+          throw new Error(result.message || "Unable to load preferences.");
+        }
+        const preferences = result.data[0];
+        if (active && preferences) {
+          setEmailUpdates(preferences.email_updates === true);
+          setWhatsappUpdates(preferences.whatsapp_updates === true);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setPreferencesError(
+            error instanceof Error ? error.message : "Unable to load preferences.",
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function savePreferences(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSavingPreferences(true);
+    setPreferencesError("");
+    setPreferencesSaved(false);
+    try {
+      const result = await customerService.savePreferences({
+        email_updates: emailUpdates,
+        whatsapp_updates: whatsappUpdates,
+        consent_version: "v1",
+      });
+      if (!result.success) {
+        throw new Error(result.message || "Unable to save preferences.");
+      }
+      setPreferencesSaved(true);
+    } catch (error) {
+      setPreferencesError(
+        error instanceof Error ? error.message : "Unable to save preferences.",
+      );
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  }
 
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isChangingPassword) return;
-    const userId = Number(user?.id);
-    if (!Number.isSafeInteger(userId) || userId < 1) {
-      setPasswordError("A valid account ID is not available for password changes.");
-      return;
-    }
     if (newPassword.length < 8 || newPassword !== confirmPassword) {
       setPasswordError(newPassword.length < 8
         ? "The new password must be at least 8 characters."
@@ -40,7 +92,10 @@ export default function UserSettingsPage() {
     setPasswordError("");
     setPasswordChanged(false);
     try {
-      const result = await authService.changePassword({ userId, oldPassword, newPassword });
+      const result = await authService.changePassword({
+        currentPassword: oldPassword,
+        newPassword,
+      });
       if (!result.success) throw new Error(result.message || "Unable to update the password.");
       setPasswordChanged(true);
       setOldPassword("");
@@ -53,10 +108,16 @@ export default function UserSettingsPage() {
     }
   }
 
-  function handleLogout() {
-    logout();
-    setConfirmLogout(false);
-    router.replace("/login");
+  async function handleLogout() {
+    try {
+      await logout();
+      setConfirmLogout(false);
+      router.replace("/login");
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error ? error.message : "Unable to sign out.",
+      );
+    }
   }
 
   function handleDelete() {
@@ -70,17 +131,46 @@ export default function UserSettingsPage() {
       description="Choose how we keep you informed and manage your account security."
     >
       <div className="settings-stack">
-        <section className="account-card settings-card">
+        <form className="account-card settings-card" onSubmit={savePreferences}>
           <div className="settings-heading">
             <span className="stat-icon blue" aria-hidden>
               <Bell size={19} />
             </span>
             <div>
               <h2>Notification preferences</h2>
-              <p>Notification preferences cannot be loaded or saved because no preference API is implemented.</p>
+              <p>Choose how you would like to receive customer updates.</p>
             </div>
           </div>
-        </section>
+          <label>
+            <input
+              type="checkbox"
+              checked={emailUpdates}
+              onChange={(event) => setEmailUpdates(event.target.checked)}
+            />
+            Email updates
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={whatsappUpdates}
+              onChange={(event) => setWhatsappUpdates(event.target.checked)}
+            />
+            WhatsApp updates
+          </label>
+          {preferencesError ? (
+            <p className="form-feedback form-error" role="alert">
+              {preferencesError}
+            </p>
+          ) : null}
+          {preferencesSaved ? (
+            <p className="form-feedback form-success" role="status">
+              Preferences saved.
+            </p>
+          ) : null}
+          <button type="submit" className="btn btn-primary" disabled={isSavingPreferences}>
+            {isSavingPreferences ? "Saving..." : "Save preferences"}
+          </button>
+        </form>
 
         <form className="account-card settings-card" onSubmit={changePassword}>
           <div className="settings-heading">
@@ -125,6 +215,11 @@ export default function UserSettingsPage() {
             <Trash2 size={16} aria-hidden /> Request account deletion
           </button>
         </div>
+        {logoutError ? (
+          <p className="form-feedback form-error" role="alert">
+            {logoutError}
+          </p>
+        ) : null}
       </section>
 
       {deleteError ? <p className="form-feedback form-error" role="alert">Account deletion is unavailable. No account data was deleted. Please contact support.</p> : null}

@@ -4,32 +4,75 @@ import { FormEvent, useEffect, useState } from "react";
 import { Camera, UserRound } from "lucide-react";
 import AccountPanel from "@/components/account/AccountPanel";
 import { useAuth } from "@/hooks/useAuth";
+import { customerService } from "@/services/customerService";
 
 export default function ProfilePage() {
   const { user } = useAuth();
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState("");
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [avatarError, setAvatarError] = useState("");
   const [initialName, setInitialName] = useState(user?.name ?? "");
+  const [initialPhone, setInitialPhone] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setName(user?.name ?? "");
-      setInitialName(user?.name ?? "");
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [user?.name]);
+    if (!user) return;
+    let active = true;
+    customerService
+      .getProfile()
+      .then((result) => {
+        if (!result.success || !Array.isArray(result.data)) {
+          throw new Error(result.message || "Unable to load your profile.");
+        }
+        const profile = result.data[0];
+        if (!active || !profile) return;
+        const profileName = String(profile.full_name ?? user.name);
+        const profilePhone = String(profile.phone ?? "");
+        setName(profileName);
+        setInitialName(profileName);
+        setPhone(profilePhone);
+        setInitialPhone(profilePhone);
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setSubmitError(
+            error instanceof Error ? error.message : "Unable to load your profile.",
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
-  function save(event: FormEvent) {
+  async function save(event: FormEvent) {
     event.preventDefault();
-    setSubmitError(true);
+    setIsSaving(true);
+    setSubmitError("");
+    try {
+      const result = await customerService.updateProfile({
+        full_name: name.trim(),
+        phone: phone.trim(),
+      });
+      if (!result.success) {
+        throw new Error(result.message || "Unable to save your profile.");
+      }
+      setInitialName(name.trim());
+      setInitialPhone(phone.trim());
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Unable to save your profile.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function cancel() {
     setName(initialName);
-    setPhone("");
+    setPhone(initialPhone);
   }
 
   function onAvatarChange(file: File | null) {
@@ -54,7 +97,7 @@ export default function ProfilePage() {
     setAvatar(null);
   }
 
-  const dirty = name !== initialName || phone !== "";
+  const dirty = name !== initialName || phone !== initialPhone;
 
   return (
     <AccountPanel
@@ -91,7 +134,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <h2>Personal information</h2>
-            <p>Profile changes cannot be saved because the backend profile API is unavailable.</p>
+            <p>Your profile is loaded and saved securely to your customer account.</p>
           </div>
         </div>
 
@@ -102,7 +145,7 @@ export default function ProfilePage() {
               id="profile-name"
               name="name"
               value={name}
-              onChange={(event) => { setName(event.target.value); setSubmitError(false); }}
+              onChange={(event) => { setName(event.target.value); setSubmitError(""); }}
               autoComplete="name"
               required
             />
@@ -123,15 +166,15 @@ export default function ProfilePage() {
               id="profile-phone"
               name="phone"
               value={phone}
-              onChange={(event) => { setPhone(event.target.value); setSubmitError(false); }}
+              onChange={(event) => { setPhone(event.target.value); setSubmitError(""); }}
               autoComplete="tel"
             />
           </label>
         </div>
 
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary">
-            Save changes
+          <button type="submit" className="btn btn-primary" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save changes"}
           </button>
           <button
             type="button"
@@ -141,7 +184,7 @@ export default function ProfilePage() {
           >
             Cancel
           </button>
-          {submitError ? <p className="form-feedback form-error" role="alert">Your profile was not saved. The backend does not provide a profile update or image upload API.</p> : null}
+          {submitError ? <p className="form-feedback form-error" role="alert">{submitError}</p> : null}
         </div>
       </form>
     </AccountPanel>

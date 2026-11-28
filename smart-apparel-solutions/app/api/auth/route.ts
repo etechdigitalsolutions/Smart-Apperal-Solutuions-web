@@ -1,100 +1,170 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isSupabaseConfigured, supabaseFetch } from "@/lib/supabase-server";
+import {
+  authError,
+  CUSTOMER_PASSWORD_RESET_REDIRECT,
+  CUSTOMER_SIGNUP_REDIRECT,
+  customerSiteUrl,
+  readJsonBody,
+} from "@/lib/auth-http";
+import {
+  createSupabaseServerClient,
+  customerAuthPayload,
+  customerSessionFromAuth,
+  getCustomerSession,
+  isSupabaseConfigured,
+} from "@/lib/supabase-server";
 
-function rpcReportedFailure(data: unknown) {
-  return data === false ||
-    (typeof data === "object" &&
-      data !== null &&
-      !Array.isArray(data) &&
-      "success" in data &&
-      data.success === false);
+export async function GET() {
+  if (!isSupabaseConfigured()) {
+    return authError("Supabase is not configured.", 503);
+  }
+
+  const customer = await getCustomerSession();
+    return NextResponse.json({
+      success: true,
+      data: customer ? customerAuthPayload(customer) : null,
+    });
 }
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured()) {
-    return NextResponse.json({ success: false, message: "SUPABASE_ANON_KEY is not configured." }, { status: 503 });
+    return authError("Supabase is not configured.", 503);
   }
 
-  let body: Record<string, unknown>;
-  try { body = await request.json() as Record<string, unknown>; }
-  catch { return NextResponse.json({ success: false, message: "Invalid JSON body." }, { status: 400 }); }
-
+  const parsed = await readJsonBody(request);
+  if ("error" in parsed && typeof parsed.error === "string") {
+    return authError(parsed.error, 400);
+  }
+  const body = parsed.body;
   const action = typeof body.action === "string" ? body.action : "login";
+  const supabase = await createSupabaseServerClient();
 
   if (action === "register") {
-    const email = String(body.email ?? "").trim();
-    const name = String(body.name ?? "").trim();
-    const password = String(body.password ?? "");
-    if (!email || !name || password.length < 8) {
-      return NextResponse.json({ success: false, message: "Name, email, and a password of at least 8 characters are required." }, { status: 400 });
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    const name =
+      typeof body.fullName === "string"
+        ? body.fullName.trim()
+        : typeof body.name === "string"
+          ? body.name.trim()
+          : "";
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || name.length < 2 || password.length < 8) {
+      return authError(
+        "Name, valid email, and a password of at least 8 characters are required.",
+      );
     }
-    const payload = {
-      p_email: email,
-      p_full_name: name,
-      p_password: password,
-      p_role_id: 2,
-      p_username: email,
-    };
-    const upstream = await supabaseFetch("/rpc/register_user", {
-      method: "POST",
-      body: JSON.stringify(payload),
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: customerSiteUrl(request, CUSTOMER_SIGNUP_REDIRECT),
+        data: { full_name: name, phone },
+      },
     });
-    const data = await upstream.json().catch(() => null);
-    if (!upstream.ok || rpcReportedFailure(data)) {
-      return NextResponse.json({ success: false, message: "Registration failed." }, { status: upstream.ok ? 400 : upstream.status });
-    }
-    return NextResponse.json({ success: true, data });
+    if (error) return authError(error.message, 400);
+
+    await supabase.auth.signOut();
+    return NextResponse.json({
+      success: true,
+      message: "Check your email to verify your account.",
+    });
   }
 
-  if (action === "verify") {
-    const upstream = await supabaseFetch("/rpc/verify_token", {
-      method: "POST",
-      body: JSON.stringify({ p_token: String(body.token ?? "") }),
+  if (action === "login") {
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || !password) {
+      return authError("Email and password are required.");
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
-    const data = await upstream.json().catch(() => null);
-    const success = upstream.ok && !rpcReportedFailure(data);
-    return NextResponse.json({ success, data }, { status: success ? upstream.status : upstream.ok ? 400 : upstream.status });
+    if (error || !data.user || !data.session) {
+      return authError("Unable to sign in with those credentials.", 401);
+    }
+
+    const customer = await customerSessionFromAuth(data.user, data.session);
+    if (!customer) {
+      await supabase.auth.signOut();
+      return authError(
+        "This account is not an authorized website customer.",
+        403,
+      );
+    }
+    return NextResponse.json({
+      success: true,
+      data: customerAuthPayload(customer),
+    });
   }
 
   if (action === "reset") {
-    return NextResponse.json({ success: false, message: "A verified password-reset flow is not available." }, { status: 501 });
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    if (!email) return authError("Email is required.");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: customerSiteUrl(request, CUSTOMER_PASSWORD_RESET_REDIRECT),
+    });
+    if (error) return authError(error.message, 400);
+    return NextResponse.json({
+      success: true,
+      message:
+        "If an account exists for that email, a recovery link has been sent.",
+    });
+  }
+
+  if (action === "update-password") {
+    const password = typeof body.password === "string" ? body.password : "";
+    if (password.length < 8) {
+      return authError("The new password must be at least 8 characters.");
+    }
+    if (!(await getCustomerSession())) {
+      return authError("A valid customer session is required.", 401);
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return authError(error.message, 400);
+    return NextResponse.json({ success: true });
   }
 
   if (action === "change-password") {
-    const userId = Number(body.userId);
-    const oldPassword = String(body.oldPassword ?? "");
-    const newPassword = String(body.newPassword ?? "");
-    if (!Number.isSafeInteger(userId) || userId < 1 || !oldPassword || newPassword.length < 8) {
-      return NextResponse.json({ success: false, message: "A valid user ID, current password, and new password of at least 8 characters are required." }, { status: 400 });
+    const currentPassword =
+      typeof body.currentPassword === "string" ? body.currentPassword : "";
+    const newPassword =
+      typeof body.newPassword === "string" ? body.newPassword : "";
+    const customer = await getCustomerSession();
+    if (!customer) {
+      return authError("A valid customer session is required.", 401);
     }
-    const upstream = await supabaseFetch("/rpc/change_password", {
-      method: "POST",
-      body: JSON.stringify({
-        p_new_password: newPassword,
-        p_old_password: oldPassword,
-        p_user_id: userId,
-      }),
+    if (!currentPassword || newPassword.length < 8) {
+      return authError(
+        "Current password and a new password of at least 8 characters are required.",
+      );
+    }
+
+    const { error: passwordError } = await supabase.auth.signInWithPassword({
+      email: customer.email,
+      password: currentPassword,
     });
-    const data = await upstream.json().catch(() => null);
-    const success = upstream.ok && !rpcReportedFailure(data);
-    return NextResponse.json({ success, data }, { status: success ? upstream.status : upstream.ok ? 400 : upstream.status });
+    if (passwordError) {
+      return authError("The current password is incorrect.", 400);
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return authError(error.message, 400);
+    return NextResponse.json({ success: true });
   }
 
-  if (action !== "login") {
-    return NextResponse.json({ success: false, message: "Unsupported authentication action." }, { status: 400 });
-  }
+  return authError("Unsupported authentication action.", 400);
+}
 
-  const payload = {
-    p_username: String(body.email ?? body.username ?? ""),
-    p_password: String(body.password ?? ""),
-  };
-  const upstream = await supabaseFetch("/rpc/authenticate_user", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  const data = await upstream.json().catch(() => null);
-  if (!upstream.ok || rpcReportedFailure(data)) {
-    return NextResponse.json({ success: false, message: "Authentication failed." }, { status: upstream.ok ? 401 : upstream.status });
+export async function DELETE() {
+  if (!isSupabaseConfigured()) {
+    return authError("Supabase is not configured.", 503);
   }
-  return NextResponse.json({ success: true, data });
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.signOut();
+  if (error) return authError(error.message, 500);
+  return NextResponse.json({ success: true });
 }

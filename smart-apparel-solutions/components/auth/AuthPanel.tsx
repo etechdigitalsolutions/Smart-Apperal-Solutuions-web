@@ -127,7 +127,6 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState(false);
@@ -192,9 +191,9 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
             password,
           });
         } else if (mode === "forgot") {
-          throw new Error("Password reset by email requires an email-reset RPC or Supabase Auth reset flow.");
+          await authService.resetPasswordForEmail(email.trim());
         } else if (mode === "reset") {
-          throw new Error("Enter your account reset link before resetting the password.");
+          await authService.updatePassword(password);
         }
         setSubmitted(true);
       } catch (submitError) {
@@ -206,7 +205,7 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
     }
 
     try {
-      await login({ email: email.trim(), password }, rememberMe);
+      await login({ email: email.trim(), password });
       try {
         const pendingProduct = sessionStorage.getItem("pending-wishlist-product");
         if (pendingProduct) {
@@ -463,15 +462,6 @@ export default function AuthPanel({ mode }: AuthPanelProps) {
 
               {mode === "login" ? (
                 <div className="auth-options">
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="auth-checkbox"
-                    />
-                    Remember me
-                  </label>
                   <Link href="/forgot-password" className="auth-link">
                     Forgot password?
                   </Link>
